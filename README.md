@@ -44,11 +44,11 @@ A fully-featured, local-first pull request review tool that replicates the Azure
 - **Abandon** and **reactivate** PRs
 
 ### Diff Viewing
-- **Side-by-side** diff with synchronized scrolling
-- **Inline/unified** diff view
-- Toggle between view modes
+- **4 view modes**: Inline, Side-by-Side, Existing (target branch only), Modified (source branch with red/green highlights)
+- Synchronized scrolling in side-by-side mode
 - File tree sidebar showing all changed files with `+/-` stats
 - Syntax highlighting via [diff2html](https://github.com/rtfpessoa/diff2html)
+- **Sticky file toolbar** — file name and view toggle stay pinned while scrolling diffs
 - Sticky file headers
 - Per-file and overall diff statistics
 - Rename and binary file detection
@@ -68,8 +68,9 @@ A fully-featured, local-first pull request review tool that replicates the Azure
 
 ### Commit History
 - List all commits between source and target branches
-- Click any commit to view its individual diff
-- Per-commit file tree with insertions/deletions
+- **Accordion view** — expand/collapse individual commits inline to see their diffs
+- Multiple commits can be expanded simultaneously
+- Per-commit file chip bar for quick file selection
 - Copy commit SHA to clipboard
 
 ### Merge Operations
@@ -112,6 +113,7 @@ A fully-featured, local-first pull request review tool that replicates the Azure
 ```
 PRView/
 ├── run.sh                          # One-command startup script
+├── test.sh                         # Test suite runner (83 tests)
 │
 ├── backend/                        # Python FastAPI backend
 │   ├── main.py                     # App entry point, CORS, route registration
@@ -128,9 +130,13 @@ PRView/
 │       │   ├── prs.py              # PR CRUD operations
 │       │   ├── diffs.py            # Diff generation (files, stats, full)
 │       │   ├── commits.py          # Commit history & per-commit diffs
-│       │   ├── comments.py         # Comment CRUD, threading, resolution
+│       │   ├── comments.py         # Comment CRUD, threading, resolution, batch
 │       │   ├── reviews.py          # Review voting
-│       │   └── merge.py            # Merge execution, conflict detection & resolution
+│       │   ├── merge.py            # Merge execution, conflict detection & resolution
+│       │   ├── labels.py           # Label CRUD, PR label assignment
+│       │   ├── compare.py          # Branch comparison without PR
+│       │   ├── webhooks.py         # Webhook registration & events
+│       │   └── checklist.py        # Review checklist items
 │       ├── services/
 │       │   └── git_service.py      # GitPython wrapper (18 methods)
 │       └── utils/
@@ -154,7 +160,10 @@ PRView/
 │       ├── stores/
 │       │   ├── repo.store.ts       # Current repo state
 │       │   ├── pr.store.ts         # Diff view mode preference
-│       │   └── theme.store.ts      # Dark/light theme (persisted)
+│       │   └── settings.store.ts    # Display name, diff mode, theme (persisted)
+│       ├── utils/
+│       │   ├── diffFilter.ts       # Existing/Modified diff side extraction
+│       │   └── exportPR.ts         # PR export utilities
 │       └── styles/
 │           └── globals.css         # Theme variables, markdown styles, dark mode
 │
@@ -218,18 +227,22 @@ Open **http://localhost:5121** in your browser.
 
 The backend is a **FastAPI** application serving a REST API on port **8121**.
 
-**Route Modules** (8 files):
+**Route Modules** (12 files):
 
 | Module | Prefix | Responsibility |
 |--------|--------|---------------|
 | `repos.py` | `/api/repos` | Validate, select, browse repositories |
 | `branches.py` | `/api/repos/{repo_id}` | List branches |
 | `prs.py` | `/api/repos/{repo_id}/prs` | PR CRUD with duplicate prevention |
-| `diffs.py` | `/api/repos/{repo_id}/prs/{pr_id}/diff` | File diffs, stats |
+| `diffs.py` | `/api/repos/{repo_id}/prs/{pr_id}/diff` | File diffs, stats, blame |
 | `commits.py` | `/api/repos/{repo_id}/prs/{pr_id}/commits` | Commit history & diffs |
-| `comments.py` | `/api/repos/{repo_id}/prs/{pr_id}/comments` | Threaded comments |
+| `comments.py` | `/api/repos/{repo_id}/prs/{pr_id}/comments` | Threaded comments, batch, suggestions |
 | `reviews.py` | `/api/repos/{repo_id}/prs/{pr_id}/reviews` | Review voting |
 | `merge.py` | `/api/repos/{repo_id}/prs/{pr_id}/merge` | Merge, conflicts |
+| `labels.py` | `/api/labels` | Label CRUD, PR label assignment |
+| `compare.py` | `/api/repos/{repo_id}/compare` | Branch comparison without PR |
+| `webhooks.py` | `/api/webhooks` | Webhook registration & events |
+| `checklist.py` | `/api/repos/{repo_id}/prs/{pr_id}/checklist` | Review checklist items |
 
 **Git Service** (`git_service.py`) wraps GitPython with 18 methods:
 - Uses `git merge-base` for accurate diffs (only shows PR changes, like Azure DevOps)
@@ -248,14 +261,16 @@ The frontend is a **React 19 + TypeScript** SPA built with **Vite**.
 | `/` | `RepoSelectPage` | Repository browser and selection |
 | `/repos/:repoId/prs` | `PRListPage` | PR listing with search and filters |
 | `/repos/:repoId/prs/:prId[/:tab]` | `PRDetailPage` | PR detail with 4 tabs |
+| `/repos/:repoId/compare/:branches` | `ComparePage` | Branch comparison diff viewer |
+| `/settings` | `SettingsPage` | Display name, diff mode, merge strategy, theme |
 
 **PR Detail Tabs:**
 
 | Tab | Features |
 |-----|----------|
 | **Overview** | Description (Markdown), activity timeline, general comments, review sidebar, merge/abandon actions |
-| **Files** | File tree + diff viewer (side-by-side/inline), inline commenting, comment badges |
-| **Commits** | Commit list, per-commit file tree + diff viewer |
+| **Files** | File tree + diff viewer (4 modes), sticky toolbar, inline commenting, comment badges |
+| **Commits** | Accordion commit list with inline diffs, multi-expand, file chip bar |
 | **Conflicts** | 3-way merge display, resolution editor, accept ours/theirs buttons |
 
 **Stores (Zustand):**
@@ -263,7 +278,7 @@ The frontend is a **React 19 + TypeScript** SPA built with **Vite**.
 | Store | State | Persistence |
 |-------|-------|-------------|
 | `repo.store` | Current repo ID, name, path | Memory |
-| `pr.store` | Diff view mode (side-by-side/inline) | Memory |
+| `pr.store` | Diff view mode (inline/side-by-side/existing/modified) | Memory |
 | `theme.store` | Dark/light theme | `localStorage` |
 
 ### Database Schema
@@ -273,32 +288,59 @@ The frontend is a **React 19 + TypeScript** SPA built with **Vite**.
 │   Repository     │
 ├─────────────────┤       ┌──────────────────┐
 │ id (PK)         │──────→│   PullRequest     │
-│ path            │       ├──────────────────┤       ┌─────────────┐
-│ name            │       │ id (PK)          │──────→│   Comment    │
-│ last_opened     │       │ repo_id (FK)     │       ├─────────────┤
-│ created_at      │       │ title            │       │ id (PK)     │
-└─────────────────┘       │ description      │       │ pr_id (FK)  │
-                          │ source_branch    │       │ parent_id   │──→ (self)
-                          │ target_branch    │       │ file_path   │
-                          │ status           │       │ line_number │
-                          │ merge_strategy   │       │ line_type   │
-                          │ author           │       │ body        │
-                          │ created_at       │       │ author      │
-                          │ updated_at       │       │ status      │
-                          │ completed_at     │       │ created_at  │
-                          └──────────────────┤       │ updated_at  │
-                                             │       └─────────────┘
+│ path            │       ├──────────────────┤       ┌──────────────────┐
+│ name            │       │ id (PK)          │──────→│   Comment         │
+│ last_opened     │       │ repo_id (FK)     │       ├──────────────────┤
+│ created_at      │       │ title            │       │ id (PK)          │
+└─────────────────┘       │ description      │       │ pr_id (FK)       │
+                          │ source_branch    │       │ parent_id        │──→ (self)
+                          │ target_branch    │       │ file_path        │
+                          │ status           │       │ line_number      │
+                          │ merge_strategy   │       │ line_type        │
+                          │ author           │       │ body             │
+                          │ ai_summary       │       │ suggestion       │
+                          │ ai_summary_agent │       │ suggestion_applied│
+                          │ created_at       │       │ author           │
+                          │ updated_at       │       │ status           │
+                          │ completed_at     │       │ is_ai_generated  │
+                          └──────────────────┤       │ ai_agent_name    │
+                                             │       │ created_at       │
+                                             │       │ updated_at       │
+                                             │       └──────────────────┘
                                              │
-                                             │       ┌─────────────┐
-                                             └──────→│   Review     │
-                                                     ├─────────────┤
-                                                     │ id (PK)     │
-                                                     │ pr_id (FK)  │
-                                                     │ reviewer    │
-                                                     │ vote        │
-                                                     │ body        │
-                                                     │ created_at  │
-                                                     └─────────────┘
+                                             │       ┌──────────────────┐
+                                             ├──────→│   Review          │
+                                             │       ├──────────────────┤
+                                             │       │ id (PK)          │
+                                             │       │ pr_id (FK)       │
+                                             │       │ reviewer         │
+                                             │       │ vote             │
+                                             │       │ body             │
+                                             │       │ is_ai_generated  │
+                                             │       │ ai_agent_name    │
+                                             │       │ created_at       │
+                                             │       └──────────────────┘
+                                             │
+                                             │       ┌──────────────────┐
+                                             └──────→│   ChecklistItem   │
+                                                     ├──────────────────┤
+                                                     │ id (PK)          │
+                                                     │ pr_id (FK)       │
+                                                     │ label            │
+                                                     │ checked          │
+                                                     │ category         │
+                                                     │ details          │
+                                                     │ created_at       │
+                                                     └──────────────────┘
+
+┌─────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   Label      │     │   PRLabel (M2M)   │     │   Webhook        │
+├─────────────┤     ├──────────────────┤     ├──────────────────┤
+│ id (PK)     │     │ pr_id (FK)       │     │ id (PK)          │
+│ name        │     │ label_id (FK)    │     │ url              │
+│ color       │     └──────────────────┘     │ events           │
+│ description │                               │ created_at       │
+└─────────────┘                               └──────────────────┘
 ```
 
 **PR Status:** `draft` | `active` | `completed` | `abandoned`
@@ -384,6 +426,45 @@ The frontend is a **React 19 + TypeScript** SPA built with **Vite**.
 | `GET` | `/api/repos/{repo_id}/prs/{pr_id}/merge/conflicts` | Detailed conflict info (ours/theirs/base) |
 | `POST` | `/api/repos/{repo_id}/prs/{pr_id}/merge/resolve` | Apply conflict resolutions |
 
+#### Labels
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/labels` | List all labels |
+| `POST` | `/api/labels` | Create label |
+| `DELETE` | `/api/labels/{label_id}` | Delete label |
+| `GET` | `/api/repos/{repo_id}/prs/{pr_id}/labels` | List PR labels |
+| `POST` | `/api/repos/{repo_id}/prs/{pr_id}/labels` | Add label to PR |
+| `DELETE` | `/api/repos/{repo_id}/prs/{pr_id}/labels/{label_id}` | Remove label from PR |
+
+#### AI Agent Features
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/repos/{repo_id}/prs/{pr_id}/context` | Full PR context (single call) |
+| `POST` | `/api/repos/{repo_id}/prs/{pr_id}/comments/batch` | Batch create comments |
+| `GET/POST` | `/api/repos/{repo_id}/prs/{pr_id}/summary` | Get/set AI summary |
+| `GET/POST` | `/api/repos/{repo_id}/prs/{pr_id}/checklist` | Get/create checklist items |
+| `PATCH` | `/api/repos/{repo_id}/prs/{pr_id}/checklist/{id}` | Update checklist item |
+| `DELETE` | `/api/repos/{repo_id}/prs/{pr_id}/checklist/{id}` | Delete checklist item |
+
+#### Branch Comparison
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/repos/{repo_id}/compare/{src}...{tgt}/stats` | Compare stats |
+| `GET` | `/api/repos/{repo_id}/compare/{src}...{tgt}/files` | Compare changed files |
+| `GET` | `/api/repos/{repo_id}/compare/{src}...{tgt}/diff` | Compare full diff |
+| `GET` | `/api/repos/{repo_id}/compare/{src}...{tgt}/commits` | Compare commits |
+
+#### Webhooks
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/webhooks` | List webhooks |
+| `POST` | `/api/webhooks` | Register webhook |
+| `DELETE` | `/api/webhooks/{webhook_id}` | Delete webhook |
+
 ---
 
 ## Usage Guide
@@ -401,7 +482,12 @@ The frontend is a **React 19 + TypeScript** SPA built with **Vite**.
 
 ### 3. Review Code
 - Navigate to the **Files** tab to see all changed files
-- Toggle between **Inline** and **Side-by-Side** diff views
+- Choose from **4 diff view modes**:
+  - **Inline** — unified diff
+  - **Side by Side** — old and new side by side with synchronized scrolling
+  - **Existing** — target branch code only (plain, no highlighting)
+  - **Modified** — source branch code with red/green change highlights
+- The file toolbar stays pinned while scrolling long diffs
 - Click the `+` button on any line gutter to add an inline comment
 - Use the file tree sidebar to jump between files
 
@@ -412,8 +498,10 @@ The frontend is a **React 19 + TypeScript** SPA built with **Vite**.
 
 ### 5. View Commits
 - Go to the **Commits** tab
-- Click any commit to expand its diff
-- Browse individual file changes within each commit
+- Click any commit to expand its diff inline (accordion style)
+- Multiple commits can be expanded simultaneously
+- Use the file chip bar within each expanded commit to filter by file
+- Click an expanded commit again to collapse it
 
 ### 6. Resolve Conflicts
 - If conflicts are detected, a badge appears on the **Conflicts** tab
@@ -472,6 +560,18 @@ Delete `backend/prview.db` and restart — it will be recreated automatically.
 
 ### Git operations fail
 Ensure the selected repository is a valid git repo with at least one commit. Both source and target branches must exist.
+
+---
+
+## Testing
+
+Run the full test suite (83 tests across 15 test files):
+
+```bash
+bash test.sh
+```
+
+Tests cover all API endpoints: repos, branches, PRs, diffs, commits, comments, reviews, labels, merge, summary, context, checklist, webhooks, compare, and abandon.
 
 ---
 
