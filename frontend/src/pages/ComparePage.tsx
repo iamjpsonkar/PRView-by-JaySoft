@@ -6,6 +6,7 @@ import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui';
 import 'diff2html/bundles/css/diff2html.min.css';
 import { Header } from '../components/layout/Header';
 import { filterDiffSide } from '../utils/diffFilter';
+import { FileTree } from '../components/pr/FileTree';
 import type { DiffFile, DiffStats, Commit, BranchInfo } from '../types';
 
 function BranchSelector({ value, onChange, repoId, placeholder }: {
@@ -219,9 +220,6 @@ export function ComparePage() {
     }
   }, [selectedFile, fileDiffs, fullDiff, diffViewMode]);
 
-  const statusIcon: Record<string, string> = { added: 'A', modified: 'M', deleted: 'D', renamed: 'R' };
-  const statusColors: Record<string, string> = { added: '#107c10', modified: '#ca5010', deleted: '#d13438', renamed: '#0078d4' };
-
   return (
     <div style={{ minHeight: '100vh', background: '#f4f5f7' }}>
       <Header breadcrumbs={[
@@ -281,53 +279,14 @@ export function ComparePage() {
             {/* File tree */}
             <div style={{
               background: 'white', borderRadius: 8, border: '1px solid #dadce0',
-              maxHeight: 'calc(100vh - 280px)', overflowY: 'auto', overflowX: 'auto', position: 'sticky', top: 16,
+              maxHeight: 'calc(100vh - 280px)', overflowY: 'auto', overflowX: 'hidden', position: 'sticky', top: 16,
             }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #dadce0', fontSize: 13, fontWeight: 600 }}>
-                Changed Files ({files.length})
-              </div>
-              <div
-                onClick={() => setSelectedFile(null)}
-                style={{
-                  padding: '8px 16px', cursor: 'pointer', fontSize: 13,
-                  background: !selectedFile ? '#e8f4fd' : 'transparent',
-                  borderBottom: '1px solid #f0f0f0', fontWeight: 600,
-                }}
-              >
-                All files
-              </div>
-              {files.map((f) => (
-                <div
-                  key={f.path}
-                  onClick={() => loadFileDiff(f.path)}
-                  style={{
-                    padding: '8px 16px', cursor: 'pointer', fontSize: 13,
-                    background: selectedFile === f.path ? '#e8f4fd' : 'transparent',
-                    borderBottom: '1px solid #f0f0f0',
-                    display: 'flex', alignItems: 'center', gap: 8,
-                  }}
-                  onMouseEnter={(e) => { if (selectedFile !== f.path) e.currentTarget.style.background = '#f9f9f9'; }}
-                  onMouseLeave={(e) => { if (selectedFile !== f.path) e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <span style={{
-                    width: 18, height: 18, borderRadius: 3, fontSize: 11,
-                    background: (statusColors[f.status] || '#5f6368') + '20',
-                    color: statusColors[f.status] || '#5f6368',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, flexShrink: 0,
-                  }}>
-                    {statusIcon[f.status] || 'M'}
-                  </span>
-                  <span title={f.path} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {f.path}
-                  </span>
-                  <span style={{ fontSize: 11, flexShrink: 0 }}>
-                    <span style={{ color: '#107c10' }}>+{f.insertions}</span>
-                    {' '}
-                    <span style={{ color: '#d13438' }}>-{f.deletions}</span>
-                  </span>
-                </div>
-              ))}
+              <FileTree
+                files={files}
+                selectedFile={selectedFile}
+                onSelectFile={(path) => path ? loadFileDiff(path) : setSelectedFile(null)}
+                fileCount={files.length}
+              />
             </div>
 
             {/* Resize handle */}

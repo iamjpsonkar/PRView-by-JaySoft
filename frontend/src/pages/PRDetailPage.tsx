@@ -17,6 +17,7 @@ import { filterDiffSide } from '../utils/diffFilter';
 import { useToast } from '../components/layout/ToastProvider';
 import { useFileReviewStore } from '../stores/fileReview.store';
 import { exportPRAsMarkdown } from '../utils/exportPR';
+import { FileTree } from '../components/pr/FileTree';
 import type { PR, DiffFile, DiffStats, Commit, Comment, Review, ConflictFile, Label, ChecklistItem } from '../types';
 
 // ─── Vote Icons ───
@@ -1013,20 +1014,15 @@ export function PRDetailPage() {
             {/* File tree */}
             <div style={{
               background: 'white', borderRadius: 8, border: '1px solid #dadce0',
-              maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', overflowX: 'auto', position: 'sticky', top: 16,
+              maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', overflowX: 'hidden', position: 'sticky', top: 16,
             }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #dadce0', fontSize: 13, fontWeight: 600 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Changed Files ({files.length})</span>
-                  {stats && (
-                    <span style={{ fontWeight: 400, fontSize: 12 }}>
-                      <span style={{ color: '#107c10' }}>+{stats.insertions}</span>
-                      {' '}
-                      <span style={{ color: '#d13438' }}>-{stats.deletions}</span>
-                    </span>
-                  )}
-                </div>
-                {files.length > 0 && (
+              <FileTree
+                files={files}
+                selectedFile={selectedFile}
+                onSelectFile={(path) => path ? loadFileDiff(path) : setSelectedFile(null)}
+                fileCount={files.length}
+                stats={stats}
+                headerExtra={files.length > 0 ? (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#5f6368', marginBottom: 3 }}>
                       <span>{getReviewedCount(String(prId))} of {files.length} reviewed</span>
@@ -1039,64 +1035,12 @@ export function PRDetailPage() {
                       }} />
                     </div>
                   </div>
-                )}
-              </div>
-              <div
-                onClick={() => { setSelectedFile(null); }}
-                style={{
-                  padding: '8px 16px', cursor: 'pointer', fontSize: 13,
-                  background: !selectedFile ? '#e8f4fd' : 'transparent',
-                  borderBottom: '1px solid #f0f0f0', fontWeight: 600,
+                ) : undefined}
+                reviewedFiles={{
+                  isReviewed: (p) => isReviewed(String(prId), p),
+                  onToggleReviewed: (p) => toggleReviewed(String(prId), p),
                 }}
-              >
-                All files
-              </div>
-              {files.map((f) => {
-                const statusIcon: Record<string, string> = { added: 'A', modified: 'M', deleted: 'D', renamed: 'R' };
-                const statusColors: Record<string, string> = { added: '#107c10', modified: '#ca5010', deleted: '#d13438', renamed: '#0078d4' };
-                const reviewed = isReviewed(String(prId), f.path);
-                return (
-                  <div
-                    key={f.path}
-                    onClick={() => loadFileDiff(f.path)}
-                    style={{
-                      padding: '8px 16px', cursor: 'pointer', fontSize: 13,
-                      background: selectedFile === f.path ? '#e8f4fd' : 'transparent',
-                      borderBottom: '1px solid #f0f0f0',
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      opacity: reviewed ? 0.6 : 1,
-                    }}
-                    onMouseEnter={(e) => { if (selectedFile !== f.path) e.currentTarget.style.background = '#f9f9f9'; }}
-                    onMouseLeave={(e) => { if (selectedFile !== f.path) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={reviewed}
-                      onChange={(e) => { e.stopPropagation(); toggleReviewed(String(prId), f.path); }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ cursor: 'pointer', accentColor: '#107c10' }}
-                      title={reviewed ? 'Mark as unreviewed' : 'Mark as reviewed'}
-                    />
-                    <span style={{
-                      width: 18, height: 18, borderRadius: 3, fontSize: 11,
-                      background: (statusColors[f.status] || '#5f6368') + '20',
-                      color: statusColors[f.status] || '#5f6368',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 700, flexShrink: 0,
-                    }}>
-                      {statusIcon[f.status] || 'M'}
-                    </span>
-                    <span title={f.path} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {f.path}
-                    </span>
-                    <span style={{ fontSize: 11, flexShrink: 0 }}>
-                      <span style={{ color: '#107c10' }}>+{f.insertions}</span>
-                      {' '}
-                      <span style={{ color: '#d13438' }}>-{f.deletions}</span>
-                    </span>
-                  </div>
-                );
-              })}
+              />
             </div>
 
             {/* Resize handle */}
