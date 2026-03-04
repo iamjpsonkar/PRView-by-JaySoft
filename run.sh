@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 VENV_DIR="$BACKEND_DIR/.venv"
-BACKEND_PORT=8000
-FRONTEND_PORT=5173
+BACKEND_PORT=8121
+FRONTEND_PORT=5121
 
 cleanup() {
   echo ""
