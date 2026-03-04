@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -18,6 +20,14 @@ def get_repo_path(repo_id: str, db: Session = Depends(get_db)) -> str:
 
 
 @router.get("/branches", response_model=list[BranchInfo])
-def list_branches(repo_path: str = Depends(get_repo_path)):
+def list_branches(
+    repo_path: str = Depends(get_repo_path),
+    search: Optional[str] = Query(None, description="Filter branches by name (case-insensitive)"),
+    limit: int = Query(100, ge=1, le=10000, description="Max branches to return"),
+):
     repo = GitService.get_repo(repo_path)
-    return GitService.get_branches(repo)
+    branches = GitService.get_branches(repo)
+    if search:
+        search_lower = search.lower()
+        branches = [b for b in branches if search_lower in b["name"].lower()]
+    return branches[:limit]

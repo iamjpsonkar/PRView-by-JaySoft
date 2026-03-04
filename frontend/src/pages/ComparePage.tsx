@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSettingsStore } from '../stores/settings.store';
@@ -8,18 +8,41 @@ import { Header } from '../components/layout/Header';
 import { filterDiffSide } from '../utils/diffFilter';
 import type { DiffFile, DiffStats, Commit, BranchInfo } from '../types';
 
-function BranchSelector({ value, onChange, branches, placeholder }: {
-  value: string; onChange: (v: string) => void; branches: BranchInfo[]; placeholder: string;
+function BranchSelector({ value, onChange, repoId, placeholder }: {
+  value: string; onChange: (v: string) => void; repoId: string; placeholder: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [results, setResults] = useState<BranchInfo[]>([]);
+  const [searching, setSearching] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const filtered = useMemo(
-    () => branches.filter((b) => b.name.toLowerCase().includes(search.toLowerCase())),
-    [branches, search],
-  );
+  // Fetch branches from server with search filter
+  const fetchBranches = (query: string) => {
+    setSearching(true);
+    const params = new URLSearchParams({ limit: '50' });
+    if (query) params.set('search', query);
+    api.get<BranchInfo[]>(`/repos/${repoId}/branches?${params}`).then((b) => {
+      setResults(b);
+      setSearching(false);
+    }).catch(() => setSearching(false));
+  };
+
+  // Load initial results when dropdown opens
+  const handleOpen = () => {
+    setOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+    if (results.length === 0) fetchBranches(search);
+  };
+
+  // Debounced search
+  const handleSearch = (q: string) => {
+    setSearch(q);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchBranches(q), 300);
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -32,7 +55,7 @@ function BranchSelector({ value, onChange, branches, placeholder }: {
   return (
     <div ref={ref} style={{ position: 'relative', minWidth: 240 }}>
       <div
-        onClick={() => { setOpen(!open); setTimeout(() => inputRef.current?.focus(), 50); }}
+        onClick={handleOpen}
         style={{
           padding: '8px 12px', border: '1px solid #dadce0', borderRadius: 6, fontSize: 14,
           cursor: 'pointer', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -57,8 +80,8 @@ function BranchSelector({ value, onChange, branches, placeholder }: {
             <input
               ref={inputRef}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search branches..."
+              onChange={(e) => handleSearch(e.target.value)}
+              placeholder="Type to search branches..."
               style={{
                 width: '100%', padding: '6px 10px', border: '1px solid #dadce0', borderRadius: 4,
                 fontSize: 13, outline: 'none', boxSizing: 'border-box',
@@ -67,9 +90,13 @@ function BranchSelector({ value, onChange, branches, placeholder }: {
             />
           </div>
           <div style={{ overflow: 'auto', maxHeight: 260 }}>
-            {filtered.length === 0 ? (
-              <div style={{ padding: 16, textAlign: 'center', color: '#9aa0a6', fontSize: 13 }}>No branches found</div>
-            ) : filtered.map((b) => (
+            {searching ? (
+              <div style={{ padding: 16, textAlign: 'center', color: '#9aa0a6', fontSize: 13 }}>Searching...</div>
+            ) : results.length === 0 ? (
+              <div style={{ padding: 16, textAlign: 'center', color: '#9aa0a6', fontSize: 13 }}>
+                {search ? 'No branches found' : 'Type to search branches'}
+              </div>
+            ) : results.map((b) => (
               <div
                 key={b.name}
                 onClick={() => { onChange(b.name); setOpen(false); setSearch(''); }}
@@ -102,7 +129,6 @@ export function ComparePage() {
   const [source, setSource] = useState(parts[0] || '');
   const [target, setTarget] = useState(parts[1] || '');
 
-  const [allBranches, setAllBranches] = useState<BranchInfo[]>([]);
   const [files, setFiles] = useState<DiffFile[]>([]);
   const [stats, setStats] = useState<DiffStats | null>(null);
   const [commits, setCommits] = useState<Commit[]>([]);
@@ -111,14 +137,6 @@ export function ComparePage() {
   const [fileDiffs, setFileDiffs] = useState<Record<string, string>>({});
   const [fullDiff, setFullDiff] = useState<string | null>(null);
   const diffRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (repoId) {
-      api.get<BranchInfo[]>(`/repos/${repoId}/branches`).then(setAllBranches).catch((err) => {
-        console.error('Failed to load branches:', err);
-      });
-    }
-  }, [repoId]);
 
   useEffect(() => {
     if (source && target && source !== target) {
@@ -192,14 +210,14 @@ export function ComparePage() {
           <BranchSelector
             value={source}
             onChange={(v) => { setSource(v); setSelectedFile(null); setFileDiffs({}); setFullDiff(null); }}
-            branches={allBranches}
+            repoId={repoId!}
             placeholder="Select source branch..."
           />
           <span style={{ fontSize: 16, color: '#5f6368' }}>...</span>
           <BranchSelector
             value={target}
             onChange={(v) => { setTarget(v); setSelectedFile(null); setFileDiffs({}); setFullDiff(null); }}
-            branches={allBranches}
+            repoId={repoId!}
             placeholder="Select target branch..."
           />
           {source && target && source !== target && (
