@@ -113,18 +113,28 @@ body {
   flex-shrink: 0 !important;
 }
 
-/* Code table — fixed within pane, no expansion */
+/* Code table — compact rows */
 .d2h-diff-table {
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
   font-size: 12px !important;
-  line-height: 16px !important;
+  line-height: 18px !important;
   border-collapse: collapse !important;
+}
+
+/* Every cell in the diff — zero vertical padding */
+.d2h-diff-table td {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin: 0 !important;
+  height: 18px !important;
+  vertical-align: top !important;
 }
 
 /* Line numbers — scroll with content, NOT fixed */
 .d2h-code-linenumber,
 .d2h-code-side-linenumber {
   position: static !important;
+  display: table-cell !important;
   width: 36px !important;
   min-width: 36px !important;
   max-width: 36px !important;
@@ -134,41 +144,43 @@ body {
   border-right: 1px solid #e8eaed !important;
   user-select: none !important;
   font-size: 11px !important;
-  vertical-align: top !important;
   box-sizing: border-box !important;
   direction: ltr !important;
+  line-height: 18px !important;
+  height: 18px !important;
 }
 
-/* Code line — remove the left padding that was reserved for absolute line numbers */
+/* Remove the zero-width space pseudo-element that adds extra height */
+.d2h-code-linenumber:after,
+.d2h-code-side-linenumber:after {
+  content: none !important;
+}
+
+/* Code line cells — compact, no extra spacing */
+.d2h-code-line,
 .d2h-code-side-line {
-  padding: 0 4px 0 6px !important;
-  white-space: pre !important;
-  display: inline-block !important;
-}
-
-/* Code content — tight padding, color spans full row */
-.d2h-code-line {
+  display: table-cell !important;
   padding: 0 4px 0 6px !important;
   white-space: pre !important;
   word-wrap: normal !important;
+  line-height: 18px !important;
+  height: 18px !important;
 }
 
+/* Code content span inside the cell */
 .d2h-code-line-ctn {
+  display: inline !important;
   white-space: pre !important;
   word-wrap: normal !important;
-  display: inline !important;
+  vertical-align: top !important;
+  line-height: 18px !important;
 }
 
-/* Ensure diff color covers the entire table row */
-.d2h-diff-tbody tr td {
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-}
-
-/* Remove default prefix (+/-) spacing */
+/* Prefix (+/-/space) */
 .d2h-code-line-prefix {
   display: inline !important;
   user-select: none !important;
+  line-height: 18px !important;
 }
 
 /* ─── Diff colors — Azure DevOps palette ─── */
