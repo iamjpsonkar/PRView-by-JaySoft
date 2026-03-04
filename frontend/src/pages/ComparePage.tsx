@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSettingsStore } from '../stores/settings.store';
@@ -7,6 +7,90 @@ import 'diff2html/bundles/css/diff2html.min.css';
 import { Header } from '../components/layout/Header';
 import { filterDiffSide } from '../utils/diffFilter';
 import type { DiffFile, DiffStats, Commit, BranchInfo } from '../types';
+
+function BranchSelector({ value, onChange, branches, placeholder }: {
+  value: string; onChange: (v: string) => void; branches: BranchInfo[]; placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const filtered = useMemo(
+    () => branches.filter((b) => b.name.toLowerCase().includes(search.toLowerCase())),
+    [branches, search],
+  );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', minWidth: 240 }}>
+      <div
+        onClick={() => { setOpen(!open); setTimeout(() => inputRef.current?.focus(), 50); }}
+        style={{
+          padding: '8px 12px', border: '1px solid #dadce0', borderRadius: 6, fontSize: 14,
+          cursor: 'pointer', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          color: value ? '#1a1a1a' : '#9aa0a6',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {value || placeholder}
+        </span>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9aa0a6" strokeWidth="2"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
+          <path d="M2 4l4 4 4-4" />
+        </svg>
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+          background: 'white', border: '1px solid #dadce0', borderRadius: 6,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 100, maxHeight: 320, display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: 8, borderBottom: '1px solid #f0f0f0' }}>
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search branches..."
+              style={{
+                width: '100%', padding: '6px 10px', border: '1px solid #dadce0', borderRadius: 4,
+                fontSize: 13, outline: 'none', boxSizing: 'border-box',
+              }}
+              onFocus={(e) => e.target.select()}
+            />
+          </div>
+          <div style={{ overflow: 'auto', maxHeight: 260 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 16, textAlign: 'center', color: '#9aa0a6', fontSize: 13 }}>No branches found</div>
+            ) : filtered.map((b) => (
+              <div
+                key={b.name}
+                onClick={() => { onChange(b.name); setOpen(false); setSearch(''); }}
+                style={{
+                  padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                  background: value === b.name ? '#e8f4fd' : 'transparent',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}
+                onMouseEnter={(e) => { if (value !== b.name) e.currentTarget.style.background = '#f9f9f9'; }}
+                onMouseLeave={(e) => { if (value !== b.name) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
+                {b.is_current && <span style={{ fontSize: 10, color: '#0078d4', fontWeight: 600 }}>HEAD</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ComparePage() {
   const { repoId, branches: urlBranches } = useParams<{ repoId: string; branches: string }>();
@@ -30,7 +114,9 @@ export function ComparePage() {
 
   useEffect(() => {
     if (repoId) {
-      api.get<BranchInfo[]>(`/repos/${repoId}/branches`).then(setAllBranches).catch(() => {});
+      api.get<BranchInfo[]>(`/repos/${repoId}/branches`).then(setAllBranches).catch((err) => {
+        console.error('Failed to load branches:', err);
+      });
     }
   }, [repoId]);
 
@@ -103,27 +189,19 @@ export function ComparePage() {
       {/* Branch selectors */}
       <div style={{ background: 'white', borderBottom: '1px solid #dadce0', padding: '16px 24px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <select
+          <BranchSelector
             value={source}
-            onChange={(e) => { setSource(e.target.value); setSelectedFile(null); setFileDiffs({}); setFullDiff(null); }}
-            style={{ padding: '8px 12px', border: '1px solid #dadce0', borderRadius: 6, fontSize: 14, minWidth: 200 }}
-          >
-            <option value="">Select source branch...</option>
-            {allBranches.map((b) => (
-              <option key={b.name} value={b.name}>{b.name}{b.is_current ? ' (HEAD)' : ''}</option>
-            ))}
-          </select>
+            onChange={(v) => { setSource(v); setSelectedFile(null); setFileDiffs({}); setFullDiff(null); }}
+            branches={allBranches}
+            placeholder="Select source branch..."
+          />
           <span style={{ fontSize: 16, color: '#5f6368' }}>...</span>
-          <select
+          <BranchSelector
             value={target}
-            onChange={(e) => { setTarget(e.target.value); setSelectedFile(null); setFileDiffs({}); setFullDiff(null); }}
-            style={{ padding: '8px 12px', border: '1px solid #dadce0', borderRadius: 6, fontSize: 14, minWidth: 200 }}
-          >
-            <option value="">Select target branch...</option>
-            {allBranches.map((b) => (
-              <option key={b.name} value={b.name}>{b.name}{b.is_current ? ' (HEAD)' : ''}</option>
-            ))}
-          </select>
+            onChange={(v) => { setTarget(v); setSelectedFile(null); setFileDiffs({}); setFullDiff(null); }}
+            branches={allBranches}
+            placeholder="Select target branch..."
+          />
           {source && target && source !== target && (
             <button
               onClick={() => navigate(`/repos/${repoId}/prs`, {
