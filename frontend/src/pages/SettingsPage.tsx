@@ -133,6 +133,8 @@ export function SettingsPage() {
               {([
                 { value: 'side-by-side' as const, label: 'Side by Side' },
                 { value: 'inline' as const, label: 'Inline' },
+                { value: 'existing' as const, label: 'Existing' },
+                { value: 'modified' as const, label: 'Modified' },
               ]).map((option) => (
                 <label
                   key={option.value}

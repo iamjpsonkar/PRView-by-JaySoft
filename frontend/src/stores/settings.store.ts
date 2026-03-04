@@ -3,11 +3,11 @@ import { persist } from 'zustand/middleware';
 
 interface SettingsState {
   displayName: string;
-  diffViewMode: 'side-by-side' | 'inline';
+  diffViewMode: 'side-by-side' | 'inline' | 'existing' | 'modified';
   defaultMergeStrategy: 'merge' | 'squash' | 'rebase';
   theme: 'light' | 'dark';
   setDisplayName: (name: string) => void;
-  setDiffViewMode: (mode: 'side-by-side' | 'inline') => void;
+  setDiffViewMode: (mode: 'side-by-side' | 'inline' | 'existing' | 'modified') => void;
   setDefaultMergeStrategy: (s: 'merge' | 'squash' | 'rebase') => void;
   toggleTheme: () => void;
 }

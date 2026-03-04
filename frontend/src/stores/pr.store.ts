@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 
 export interface PRState {
-  diffViewMode: 'side-by-side' | 'inline';
+  diffViewMode: 'side-by-side' | 'inline' | 'existing' | 'modified';
   toggleDiffViewMode: () => void;
-  setDiffViewMode: (mode: 'side-by-side' | 'inline') => void;
+  setDiffViewMode: (mode: 'side-by-side' | 'inline' | 'existing' | 'modified') => void;
 }
 
 export const usePRStore = create<PRState>((set) => ({

@@ -13,6 +13,7 @@ import { CommentBlock } from '../components/pr/CommentBlock';
 import { LabelBadge } from '../components/pr/LabelBadge';
 import { MarkdownEditor } from '../components/pr/MarkdownEditor';
 import { ShortcutHelpModal } from '../components/layout/ShortcutHelpModal';
+import { filterDiffSide } from '../utils/diffFilter';
 import { useToast } from '../components/layout/ToastProvider';
 import { useFileReviewStore } from '../stores/fileReview.store';
 import { exportPRAsMarkdown } from '../utils/exportPR';
@@ -282,8 +283,11 @@ export function PRDetailPage() {
         return;
       }
       el.innerHTML = '';
+      const renderText = (diffViewMode === 'existing' || diffViewMode === 'modified')
+        ? filterDiffSide(diffText, diffViewMode)
+        : diffText;
       try {
-        const ui = new Diff2HtmlUI(el, diffText, {
+        const ui = new Diff2HtmlUI(el, renderText, {
           outputFormat: diffViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line',
           drawFileList: false,
           matching: 'lines',
@@ -293,7 +297,7 @@ export function PRDetailPage() {
         ui.draw();
         ui.highlightCode();
       } catch {
-        el.innerHTML = `<pre style="padding:16px;font-size:12px;overflow:auto">${diffText.replace(/</g, '&lt;')}</pre>`;
+        el.innerHTML = `<pre style="padding:16px;font-size:12px;overflow:auto">${renderText.replace(/</g, '&lt;')}</pre>`;
       }
     });
   }, [expandedCommits, commitDiffs, commitFileDiffs, commitSelectedFiles, diffViewMode]);
@@ -329,7 +333,11 @@ export function PRDetailPage() {
 
     diffRef.current.innerHTML = '';
 
-    const ui = new Diff2HtmlUI(diffRef.current, diffText, {
+    const renderText = (diffViewMode === 'existing' || diffViewMode === 'modified')
+      ? filterDiffSide(diffText, diffViewMode)
+      : diffText;
+
+    const ui = new Diff2HtmlUI(diffRef.current, renderText, {
       outputFormat: diffViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line',
       drawFileList: false,
       matching: 'lines',
@@ -1096,26 +1104,19 @@ export function PRDetailPage() {
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <button
-                      onClick={() => setDiffViewMode('inline')}
-                      style={{
-                        padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-                        background: diffViewMode === 'inline' ? '#0078d4' : 'white',
-                        color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                      }}
-                    >
-                      Inline
-                    </button>
-                    <button
-                      onClick={() => setDiffViewMode('side-by-side')}
-                      style={{
-                        padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-                        background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
-                        color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                      }}
-                    >
-                      Side by Side
-                    </button>
+                    {(['inline', 'side-by-side', 'existing', 'modified'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setDiffViewMode(mode)}
+                        style={{
+                          padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
+                          background: diffViewMode === mode ? '#0078d4' : 'white',
+                          color: diffViewMode === mode ? 'white' : '#1a1a1a', cursor: 'pointer',
+                        }}
+                      >
+                        {mode === 'inline' ? 'Inline' : mode === 'side-by-side' ? 'Side by Side' : mode === 'existing' ? 'Existing' : 'Modified'}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -1314,22 +1315,19 @@ export function PRDetailPage() {
                             {cSelFile || 'All changes'} — <code style={{ background: '#f4f5f7', padding: '2px 6px', borderRadius: 3, fontSize: 12 }}>{c.short_sha}</code>
                           </span>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button
-                              onClick={() => setDiffViewMode('inline')}
-                              style={{
-                                padding: '3px 10px', fontSize: 11, border: '1px solid #dadce0', borderRadius: 4,
-                                background: diffViewMode === 'inline' ? '#0078d4' : 'white',
-                                color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                              }}
-                            >Inline</button>
-                            <button
-                              onClick={() => setDiffViewMode('side-by-side')}
-                              style={{
-                                padding: '3px 10px', fontSize: 11, border: '1px solid #dadce0', borderRadius: 4,
-                                background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
-                                color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                              }}
-                            >Side by Side</button>
+                            {(['inline', 'side-by-side', 'existing', 'modified'] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                onClick={() => setDiffViewMode(mode)}
+                                style={{
+                                  padding: '3px 10px', fontSize: 11, border: '1px solid #dadce0', borderRadius: 4,
+                                  background: diffViewMode === mode ? '#0078d4' : 'white',
+                                  color: diffViewMode === mode ? 'white' : '#1a1a1a', cursor: 'pointer',
+                                }}
+                              >
+                                {mode === 'inline' ? 'Inline' : mode === 'side-by-side' ? 'Side by Side' : mode === 'existing' ? 'Existing' : 'Modified'}
+                              </button>
+                            ))}
                           </div>
                         </div>
 

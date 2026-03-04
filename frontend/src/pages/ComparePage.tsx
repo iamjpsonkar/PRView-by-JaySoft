@@ -5,6 +5,7 @@ import { useSettingsStore } from '../stores/settings.store';
 import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui';
 import 'diff2html/bundles/css/diff2html.min.css';
 import { Header } from '../components/layout/Header';
+import { filterDiffSide } from '../utils/diffFilter';
 import type { DiffFile, DiffStats, Commit, BranchInfo } from '../types';
 
 export function ComparePage() {
@@ -74,15 +75,18 @@ export function ComparePage() {
     const diffText = selectedFile ? fileDiffs[selectedFile] : fullDiff;
     if (!diffText) { diffRef.current.innerHTML = ''; return; }
     diffRef.current.innerHTML = '';
+    const renderText = (diffViewMode === 'existing' || diffViewMode === 'modified')
+      ? filterDiffSide(diffText, diffViewMode)
+      : diffText;
     try {
-      new Diff2HtmlUI(diffRef.current, diffText, {
+      new Diff2HtmlUI(diffRef.current, renderText, {
         drawFileList: false,
         matching: 'lines',
-        outputFormat: diffViewMode === 'inline' ? 'line-by-line' : 'side-by-side',
+        outputFormat: diffViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line',
         renderNothingWhenEmpty: false,
       }).draw();
     } catch {
-      diffRef.current.innerHTML = `<pre style="padding:16px;font-size:12px;overflow:auto">${diffText.replace(/</g, '&lt;')}</pre>`;
+      diffRef.current.innerHTML = `<pre style="padding:16px;font-size:12px;overflow:auto">${renderText.replace(/</g, '&lt;')}</pre>`;
     }
   }, [selectedFile, fileDiffs, fullDiff, diffViewMode]);
 
@@ -216,22 +220,19 @@ export function ComparePage() {
                   {selectedFile || 'All changes'}
                 </span>
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <button
-                    onClick={() => setDiffViewMode('inline')}
-                    style={{
-                      padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-                      background: diffViewMode === 'inline' ? '#0078d4' : 'white',
-                      color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                    }}
-                  >Inline</button>
-                  <button
-                    onClick={() => setDiffViewMode('side-by-side')}
-                    style={{
-                      padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-                      background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
-                      color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                    }}
-                  >Side by Side</button>
+                  {(['inline', 'side-by-side', 'existing', 'modified'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setDiffViewMode(mode)}
+                      style={{
+                        padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
+                        background: diffViewMode === mode ? '#0078d4' : 'white',
+                        color: diffViewMode === mode ? 'white' : '#1a1a1a', cursor: 'pointer',
+                      }}
+                    >
+                      {mode === 'inline' ? 'Inline' : mode === 'side-by-side' ? 'Side by Side' : mode === 'existing' ? 'Existing' : 'Modified'}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div style={{

@@ -1,10 +1,12 @@
 import React from 'react';
 
+type DiffViewMode = 'inline' | 'side-by-side' | 'existing' | 'modified';
+
 interface DiffToolbarProps {
   title: string;
   subtitle?: string;
-  diffViewMode: 'inline' | 'side-by-side';
-  onModeChange: (mode: 'inline' | 'side-by-side') => void;
+  diffViewMode: DiffViewMode;
+  onModeChange: (mode: DiffViewMode) => void;
   extraControls?: React.ReactNode;
 }
 
@@ -30,26 +32,19 @@ export function DiffToolbar({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {extraControls}
         <div style={{ display: 'flex', gap: 4 }}>
-          <button
-            onClick={() => onModeChange('inline')}
-            style={{
-              padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-              background: diffViewMode === 'inline' ? '#0078d4' : 'white',
-              color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
-            }}
-          >
-            Inline
-          </button>
-          <button
-            onClick={() => onModeChange('side-by-side')}
-            style={{
-              padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-              background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
-              color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
-            }}
-          >
-            Side by Side
-          </button>
+          {(['inline', 'side-by-side', 'existing', 'modified'] as DiffViewMode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => onModeChange(mode)}
+              style={{
+                padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
+                background: diffViewMode === mode ? '#0078d4' : 'white',
+                color: diffViewMode === mode ? 'white' : '#1a1a1a', cursor: 'pointer',
+              }}
+            >
+              {mode === 'inline' ? 'Inline' : mode === 'side-by-side' ? 'Side by Side' : mode === 'existing' ? 'Existing' : 'Modified'}
+            </button>
+          ))}
         </div>
       </div>
     </div>
