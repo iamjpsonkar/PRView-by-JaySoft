@@ -1,6 +1,6 @@
 import { useSettingsStore } from '../stores/settings.store';
 
-const BASE = '/api';
+const BASE = ((window as any).electronEnv?.apiBase ?? '') + '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const displayName = useSettingsStore.getState().displayName;

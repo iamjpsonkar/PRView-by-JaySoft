@@ -1,0 +1,63 @@
+{
+  "name": "prview-desktop",
+  "version": "1.0.0",
+  "description": "PRView — local-first PR review tool",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "ELECTRON_DEV=1 electron .",
+    "build": "electron-builder --mac",
+    "build:dmg": "electron-builder --mac dmg",
+    "build:zip": "electron-builder --mac zip"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.prview.app",
+    "productName": "PRView",
+    "copyright": "Copyright © 2025",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["universal"] },
+        { "target": "zip", "arch": ["universal"] }
+      ],
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "PRView Installer",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "splash.html"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!.venv/**",
+          "!__pycache__/**",
+          "!**/__pycache__/**",
+          "!*.pyc",
+          "!**/*.pyc",
+          "!prview.db"
+        ]
+      }
+    ]
+  }
+}

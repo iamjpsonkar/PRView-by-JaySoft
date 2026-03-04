@@ -8,7 +8,7 @@ app = FastAPI(title="PRView API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5121"],
+    allow_origins=["http://localhost:5121", "http://127.0.0.1:5121", "null"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
