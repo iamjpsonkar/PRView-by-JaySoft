@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSettingsStore } from '../stores/settings.store';
@@ -30,6 +31,41 @@ const voteDisplay: Record<string, { label: string; color: string }> = {
 
 const VALID_TABS = ['overview', 'files', 'commits', 'conflicts'] as const;
 type Tab = typeof VALID_TABS[number];
+
+// ─── Inline comment thread (rendered into diff DOM via createRoot) ───
+function InlineCommentThread({
+  comments, onResolve, onDelete, onReplySubmit,
+}: {
+  comments: Comment[];
+  onResolve: (id: number) => void;
+  onDelete: (id: number) => void;
+  onReplySubmit: (parentId: number, body: string) => Promise<void>;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
+    <div style={{ background: '#f0f7ff', borderTop: '2px solid #b8d8f8', borderBottom: '2px solid #b8d8f8' }}>
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '3px 12px', width: '100%', background: 'none',
+          border: 'none', borderBottom: collapsed ? 'none' : '1px solid #d0e8f8',
+          cursor: 'pointer', fontSize: 12, color: '#0078d4', textAlign: 'left',
+        }}
+      >
+        <span style={{ fontSize: 9 }}>{collapsed ? '▶' : '▼'}</span>
+        <span>💬 {comments.length} comment{comments.length !== 1 ? 's' : ''}</span>
+      </button>
+      {!collapsed && (
+        <div style={{ padding: '8px 16px' }}>
+          {comments.map((c) => (
+            <CommentBlock key={c.id} comment={c} onResolve={onResolve} onDelete={onDelete} onReplySubmit={onReplySubmit} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PRDetailPage() {
   const { repoId, prId, tab: urlTab } = useParams<{ repoId: string; prId: string; tab?: string }>();
@@ -87,6 +123,8 @@ export function PRDetailPage() {
   const commitDiffRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const diffRef = useRef<HTMLDivElement>(null);
+  const inlineCommentsRef = useRef<HTMLDivElement>(null);
+  const inlineDiffRootsRef = useRef<Map<string, Root>>(new Map());
 
   // Resizable sidebar width
   const [sidebarWidth, setSidebarWidth] = useState(260);
@@ -344,14 +382,32 @@ export function PRDetailPage() {
       });
       setInlineComment(null);
       setInlineCommentBody('');
-      loadComments();
+      await loadComments();
       loadPR();
+      addToast('success', 'Comment added');
+      setTimeout(() => {
+        inlineCommentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 150);
     } catch { }
+  };
+
+  const submitReply = async (parentId: number, body: string) => {
+    await api.post(`/repos/${repoId}/prs/${prId}/comments`, {
+      body,
+      parent_id: parentId,
+    });
+    loadComments();
+    loadPR();
   };
 
   // ─── Render diff ───
   useEffect(() => {
     if (!diffRef.current) return;
+
+    // Cleanup previous inline comment React roots before clearing DOM
+    inlineDiffRootsRef.current.forEach(root => root.unmount());
+    inlineDiffRootsRef.current.clear();
+
     const diffText = selectedFile ? fileDiffs[selectedFile] : fullDiff;
     if (!diffText) {
       diffRef.current.innerHTML = '<div style="padding:48px;text-align:center;color:#5f6368">No changes to display</div>';
@@ -381,8 +437,9 @@ export function PRDetailPage() {
     }
     ui.stickyFileHeaders();
 
-    // Inject comment buttons on each code line
+    // Inject comment buttons and inline comment threads
     if (diffRef.current) {
+      const injectedKeys = new Set<string>();
       const rows = diffRef.current.querySelectorAll('.d2h-diff-tbody tr');
       rows.forEach((row) => {
         const lineNumEl = row.querySelector('.d2h-code-linenumber, .d2h-code-side-linenumber');
@@ -401,7 +458,7 @@ export function PRDetailPage() {
         const isRight = row.closest('.d2h-file-side-diff:last-child') !== null;
         const side = isRight ? 'new' : 'old';
 
-        // Create comment button
+        // Inject + comment button
         const btn = document.createElement('button');
         btn.className = 'prv-comment-btn';
         btn.textContent = '+';
@@ -411,27 +468,55 @@ export function PRDetailPage() {
           setInlineComment({ file: filePath, line: lineNum, side });
           setInlineCommentBody('');
         };
-
         const firstTd = row.querySelector('td');
         if (firstTd) {
           firstTd.style.position = 'relative';
           firstTd.appendChild(btn);
         }
 
-        // Show comment count badge if there are comments on this line
-        const lineComments = comments.filter(
-          (c) => c.file_path === filePath && c.line_number === lineNum && !c.parent_id
+        // Inject inline comment thread after this row (once per file:line[:side])
+        const sideKey = diffViewMode === 'side-by-side' ? `:${side}` : '';
+        const key = `${filePath}:${lineNum}${sideKey}`;
+        if (injectedKeys.has(key)) return;
+
+        const lineComments = comments.filter((c) => {
+          if (c.file_path !== filePath || c.line_number !== lineNum || c.parent_id) return false;
+          if (diffViewMode === 'side-by-side') {
+            if (c.line_type === 'new' && !isRight) return false;
+            if (c.line_type === 'old' && isRight) return false;
+          }
+          return true;
+        });
+        if (lineComments.length === 0) return;
+
+        injectedKeys.add(key);
+        const commentRow = document.createElement('tr');
+        commentRow.className = 'prv-inline-comment-row';
+        const td = document.createElement('td');
+        td.colSpan = 10;
+        td.style.cssText = 'padding: 0; border: none;';
+        const container = document.createElement('div');
+        td.appendChild(container);
+        commentRow.appendChild(td);
+        row.parentNode?.insertBefore(commentRow, row.nextSibling);
+
+        const root = createRoot(container);
+        inlineDiffRootsRef.current.set(key, root);
+        root.render(
+          <InlineCommentThread
+            comments={lineComments}
+            onResolve={resolveComment}
+            onDelete={deleteComment}
+            onReplySubmit={submitReply}
+          />
         );
-        if (lineComments.length > 0) {
-          const badge = document.createElement('span');
-          badge.className = 'prv-comment-badge';
-          badge.textContent = `💬 ${lineComments.length}`;
-          badge.title = lineComments.map((c) => `${c.author}: ${c.body.slice(0, 60)}`).join('\n');
-          badge.style.cssText = 'position:absolute;right:2px;top:0;font-size:10px;background:#e8f4fd;color:#0078d4;padding:0 4px;border-radius:8px;cursor:pointer;z-index:5;line-height:16px;';
-          if (firstTd) firstTd.appendChild(badge);
-        }
       });
     }
+
+    return () => {
+      inlineDiffRootsRef.current.forEach(root => root.unmount());
+      inlineDiffRootsRef.current.clear();
+    };
   }, [selectedFile, fileDiffs, fullDiff, diffViewMode, comments]);
 
   // ─── Comment actions ───
@@ -798,7 +883,7 @@ export function PRDetailPage() {
                 {generalComments.map((c) => (
                   <CommentBlock key={c.id} comment={c}
                     onResolve={resolveComment} onDelete={deleteComment}
-                    onReply={(id) => { setReplyTo(id); setShowGeneralComment(true); }}
+                    onReplySubmit={submitReply}
                   />
                 ))}
 
@@ -1158,14 +1243,15 @@ export function PRDetailPage() {
                 </div>
               )}
 
-              {/* Inline comments displayed by file */}
-              {fileComments.length > 0 && (
+              {/* File-level comments (no line number) shown below diff */}
+              <div ref={inlineCommentsRef} />
+              {fileComments.filter(c => !c.line_number && (!selectedFile || c.file_path === selectedFile)).length > 0 && (
                 <div style={{ marginTop: 12 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: '#5f6368' }}>
-                    Inline Comments
+                    File Comments
                   </div>
                   {fileComments
-                    .filter((c) => !selectedFile || c.file_path === selectedFile)
+                    .filter(c => !c.line_number && (!selectedFile || c.file_path === selectedFile))
                     .map((c) => (
                       <div key={c.id} style={{
                         background: 'white', border: '1px solid #dadce0', borderRadius: 6,
@@ -1174,17 +1260,15 @@ export function PRDetailPage() {
                         <div style={{
                           background: '#f4f5f7', padding: '6px 12px', fontSize: 12,
                           fontFamily: 'monospace', borderBottom: '1px solid #dadce0',
-                          display: 'flex', alignItems: 'center', gap: 8,
                         }}>
                           <span style={{ color: '#0078d4' }}>{c.file_path}</span>
-                          {c.line_number && <span style={{ color: '#5f6368' }}>line {c.line_number}</span>}
                         </div>
                         <div style={{ padding: 8 }}>
                           <CommentBlock
                             comment={c}
                             onResolve={resolveComment}
                             onDelete={deleteComment}
-                            onReply={(id) => { setReplyTo(id); setCommentFile(c.file_path); setShowGeneralComment(true); }}
+                            onReplySubmit={submitReply}
                           />
                         </div>
                       </div>

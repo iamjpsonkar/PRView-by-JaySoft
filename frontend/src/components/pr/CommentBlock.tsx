@@ -1,16 +1,33 @@
+import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Avatar } from '../layout/Avatar';
 import type { Comment } from '../../types';
 
 export function CommentBlock({
-  comment, onResolve, onDelete, onReply,
+  comment, onResolve, onDelete, onReplySubmit,
 }: {
   comment: Comment;
   onResolve: (id: number) => void;
   onDelete: (id: number) => void;
-  onReply: (id: number) => void;
+  onReplySubmit: (parentId: number, body: string) => Promise<void>;
 }) {
+  const [showReplyForm, setShowReplyForm] = useState(false);
+  const [replyBody, setReplyBody] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleReply = async () => {
+    if (!replyBody.trim()) return;
+    setSubmitting(true);
+    try {
+      await onReplySubmit(comment.id, replyBody);
+      setReplyBody('');
+      setShowReplyForm(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div style={{
       padding: 12, borderRadius: 6, marginBottom: 8,
@@ -43,10 +60,13 @@ export function CommentBlock({
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           <button
-            onClick={() => onReply(comment.id)}
+            onClick={() => { setShowReplyForm(!showReplyForm); setReplyBody(''); }}
             style={{
-              padding: '2px 8px', fontSize: 11, background: '#f4f5f7',
-              border: '1px solid #dadce0', borderRadius: 3, cursor: 'pointer',
+              padding: '2px 8px', fontSize: 11,
+              background: showReplyForm ? '#e8f4fd' : '#f4f5f7',
+              border: showReplyForm ? '1px solid #0078d4' : '1px solid #dadce0',
+              borderRadius: 3, cursor: 'pointer',
+              color: showReplyForm ? '#0078d4' : 'inherit',
             }}
           >
             Reply
@@ -87,9 +107,51 @@ export function CommentBlock({
               comment={r}
               onResolve={onResolve}
               onDelete={onDelete}
-              onReply={onReply}
+              onReplySubmit={onReplySubmit}
             />
           ))}
+        </div>
+      )}
+      {showReplyForm && (
+        <div style={{ marginTop: 8, paddingLeft: 16, borderLeft: '2px solid #0078d4' }}>
+          <textarea
+            autoFocus
+            value={replyBody}
+            onChange={(e) => setReplyBody(e.target.value)}
+            placeholder="Write a reply..."
+            rows={2}
+            style={{
+              width: '100%', padding: 8, border: '1px solid #dadce0',
+              borderRadius: 4, fontSize: 13, resize: 'vertical', boxSizing: 'border-box',
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { setShowReplyForm(false); setReplyBody(''); }
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleReply();
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: '#9aa0a6', marginRight: 'auto' }}>⌘+Enter to submit</span>
+            <button
+              onClick={() => { setShowReplyForm(false); setReplyBody(''); }}
+              style={{
+                padding: '4px 10px', background: '#f4f5f7', border: '1px solid #dadce0',
+                borderRadius: 4, cursor: 'pointer', fontSize: 12,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleReply}
+              disabled={!replyBody.trim() || submitting}
+              style={{
+                padding: '4px 10px', background: '#0078d4', color: 'white',
+                border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12,
+                fontWeight: 600, opacity: replyBody.trim() && !submitting ? 1 : 0.5,
+              }}
+            >
+              {submitting ? 'Sending...' : 'Reply'}
+            </button>
+          </div>
         </div>
       )}
     </div>
