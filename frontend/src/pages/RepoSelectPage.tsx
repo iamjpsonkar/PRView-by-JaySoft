@@ -76,9 +76,8 @@ export function RepoSelectPage() {
 
   const navigateBrowser = (dir: DirEntry) => {
     if (dir.is_git_repo) {
-      setPath(dir.path);
       setShowBrowser(false);
-      setValidation(null);
+      selectRepo(dir.path);
     } else {
       setBrowsePath(dir.path);
     }
