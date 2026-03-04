@@ -30,20 +30,42 @@ class GitService:
             return False, str(e)
 
     @staticmethod
-    def get_branches(repo: Repo) -> list[dict]:
+    def get_branches(repo: Repo, search: Optional[str] = None, limit: int = 100) -> list[dict]:
+        try:
+            active = repo.active_branch.name if not repo.head.is_detached else None
+        except Exception:
+            active = None
+
+        # Use git for-each-ref for fast branch listing (much faster than repo.references)
+        fmt = '%(refname:short)\t%(objectname)\t%(subject)'
+        if search:
+            # Fetch more to filter in Python (git glob doesn't do substring match well)
+            output = repo.git.for_each_ref(
+                f'--format={fmt}', '--sort=-committerdate',
+                '--count=5000', 'refs/heads/'
+            )
+            search_lower = search.lower()
+            lines = [l for l in output.strip().split('\n') if l and search_lower in l.split('\t')[0].lower()]
+            lines = lines[:limit]
+        else:
+            output = repo.git.for_each_ref(
+                f'--format={fmt}', '--sort=-committerdate',
+                f'--count={limit}', 'refs/heads/'
+            )
+            lines = [l for l in output.strip().split('\n') if l]
+
         branches = []
-        for ref in repo.references:
-            if hasattr(ref, 'tracking_branch') or ref.path.startswith('refs/heads/'):
-                try:
-                    commit = ref.commit
-                    branches.append({
-                        "name": ref.name,
-                        "is_current": ref.name == repo.active_branch.name if not repo.head.is_detached else False,
-                        "commit_sha": str(commit.hexsha),
-                        "commit_message": commit.message.strip().split('\n')[0][:100],
-                    })
-                except Exception:
-                    continue
+        for line in lines:
+            parts = line.split('\t', 2)
+            if len(parts) < 3:
+                continue
+            name, full_sha, message = parts
+            branches.append({
+                "name": name,
+                "is_current": name == active,
+                "commit_sha": full_sha,
+                "commit_message": message[:100],
+            })
         return branches
 
     @staticmethod

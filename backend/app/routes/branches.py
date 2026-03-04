@@ -26,8 +26,4 @@ def list_branches(
     limit: int = Query(100, ge=1, le=10000, description="Max branches to return"),
 ):
     repo = GitService.get_repo(repo_path)
-    branches = GitService.get_branches(repo)
-    if search:
-        search_lower = search.lower()
-        branches = [b for b in branches if search_lower in b["name"].lower()]
-    return branches[:limit]
+    return GitService.get_branches(repo, search=search, limit=limit)
