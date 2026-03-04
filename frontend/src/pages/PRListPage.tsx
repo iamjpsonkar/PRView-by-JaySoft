@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useRepoStore } from '../stores/repo.store';
@@ -180,39 +180,19 @@ export function PRListPage() {
           }}>
             <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 20 }}>Create Pull Request</h2>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: 13 }}>Source Branch</label>
-              <select
-                value={newPR.source_branch}
-                onChange={(e) => setNewPR({ ...newPR, source_branch: e.target.value })}
-                style={{
-                  width: '100%', padding: '8px 12px', border: '1px solid #dadce0',
-                  borderRadius: 6, fontSize: 14,
-                }}
-              >
-                <option value="">Select source branch...</option>
-                {branches.map((b) => (
-                  <option key={b.name} value={b.name}>{b.name}</option>
-                ))}
-              </select>
-            </div>
+            <BranchPicker
+              label="Source Branch"
+              value={newPR.source_branch}
+              branches={branches}
+              onChange={(name) => setNewPR({ ...newPR, source_branch: name })}
+            />
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: 13 }}>Target Branch</label>
-              <select
-                value={newPR.target_branch}
-                onChange={(e) => setNewPR({ ...newPR, target_branch: e.target.value })}
-                style={{
-                  width: '100%', padding: '8px 12px', border: '1px solid #dadce0',
-                  borderRadius: 6, fontSize: 14,
-                }}
-              >
-                <option value="">Select target branch...</option>
-                {branches.map((b) => (
-                  <option key={b.name} value={b.name}>{b.name}</option>
-                ))}
-              </select>
-            </div>
+            <BranchPicker
+              label="Target Branch"
+              value={newPR.target_branch}
+              branches={branches}
+              onChange={(name) => setNewPR({ ...newPR, target_branch: name })}
+            />
 
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: 13 }}>Title</label>
@@ -274,6 +254,117 @@ export function PRListPage() {
                 Create
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BranchPicker({
+  label, value, branches, onChange,
+}: {
+  label: string;
+  value: string;
+  branches: BranchInfo[];
+  onChange: (name: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const filtered = branches.filter((b) =>
+    b.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div style={{ marginBottom: 16, position: 'relative' }} ref={ref}>
+      <label style={{ display: 'block', fontWeight: 600, marginBottom: 4, fontSize: 13 }}>{label}</label>
+      <div
+        onClick={() => setOpen(true)}
+        style={{
+          width: '100%', padding: '8px 12px', border: '1px solid #dadce0',
+          borderRadius: 6, fontSize: 14, cursor: 'pointer', background: 'white',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}
+      >
+        <span style={{ color: value ? '#1a1a1a' : '#9aa0a6' }}>
+          {value || `Select ${label.toLowerCase()}...`}
+        </span>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#5f6368" strokeWidth="2">
+          <path d="M3 5l3 3 3-3" />
+        </svg>
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+          background: 'white', border: '1px solid #dadce0', borderRadius: 6,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', marginTop: 4,
+          maxHeight: 260, display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: 8, borderBottom: '1px solid #f0f0f0' }}>
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search branches..."
+              style={{
+                width: '100%', padding: '6px 10px', border: '1px solid #dadce0',
+                borderRadius: 4, fontSize: 13, outline: 'none',
+              }}
+            />
+          </div>
+          <div style={{ overflow: 'auto', flex: 1 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 12, textAlign: 'center', color: '#5f6368', fontSize: 13 }}>
+                No branches found
+              </div>
+            ) : (
+              filtered.map((b) => (
+                <div
+                  key={b.name}
+                  onClick={() => { onChange(b.name); setOpen(false); setSearch(''); }}
+                  style={{
+                    padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: value === b.name ? '#e8f4fd' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => { if (value !== b.name) e.currentTarget.style.background = '#f9f9f9'; }}
+                  onMouseLeave={(e) => { if (value !== b.name) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      fontFamily: 'monospace', fontSize: 12,
+                      fontWeight: b.is_current ? 700 : 400,
+                    }}>
+                      {b.name}
+                    </span>
+                    {b.is_current && (
+                      <span style={{
+                        fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                        background: '#dff6dd', color: '#107c10',
+                      }}>
+                        HEAD
+                      </span>
+                    )}
+                  </div>
+                  {value === b.name && (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#0078d4" strokeWidth="2">
+                      <path d="M3 7l3 3 5-5" />
+                    </svg>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
