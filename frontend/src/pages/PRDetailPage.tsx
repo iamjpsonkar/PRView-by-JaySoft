@@ -1,47 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { usePRStore } from '../stores/pr.store';
+import { useSettingsStore } from '../stores/settings.store';
 import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui';
 import 'diff2html/bundles/css/diff2html.min.css';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useThemeStore } from '../stores/theme.store';
-
-// ─── Types ───
-interface PR {
-  id: number; repo_id: string; title: string; description: string;
-  source_branch: string; target_branch: string; status: string;
-  author: string; created_at: string; updated_at: string;
-  completed_at: string | null; comment_count: number;
-  review_summary: Record<string, string>;
-}
-interface DiffFile {
-  path: string; status: string; insertions: number; deletions: number; old_path?: string;
-}
-interface DiffStats { files_changed: number; insertions: number; deletions: number; }
-interface Commit {
-  sha: string; short_sha: string; message: string;
-  author_name: string; author_email: string; authored_date: string; files_changed: number;
-}
-interface Comment {
-  id: number; pr_id: number; parent_id: number | null;
-  file_path: string | null; line_number: number | null;
-  line_type: string | null; body: string; author: string;
-  status: string; created_at: string; updated_at: string;
-  replies: Comment[];
-}
-interface Review {
-  id: number; pr_id: number; reviewer: string;
-  vote: string; body: string; created_at: string;
-}
-interface ConflictFile {
-  path: string;
-  conflict_content: string;
-  ours: string;
-  theirs: string;
-  base: string;
-}
+import { Header } from '../components/layout/Header';
+import { Modal } from '../components/layout/Modal';
+import { Avatar } from '../components/layout/Avatar';
+import { CommentBlock } from '../components/pr/CommentBlock';
+import { LabelBadge } from '../components/pr/LabelBadge';
+import { MarkdownEditor } from '../components/pr/MarkdownEditor';
+import { ShortcutHelpModal } from '../components/layout/ShortcutHelpModal';
+import { useToast } from '../components/layout/ToastProvider';
+import { useFileReviewStore } from '../stores/fileReview.store';
+import { exportPRAsMarkdown } from '../utils/exportPR';
+import type { PR, DiffFile, DiffStats, Commit, Comment, Review, ConflictFile, Label, ChecklistItem } from '../types';
 
 // ─── Vote Icons ───
 const voteDisplay: Record<string, { label: string; color: string }> = {
@@ -57,8 +32,11 @@ type Tab = typeof VALID_TABS[number];
 export function PRDetailPage() {
   const { repoId, prId, tab: urlTab } = useParams<{ repoId: string; prId: string; tab?: string }>();
   const navigate = useNavigate();
-  const { diffViewMode, setDiffViewMode } = usePRStore();
-  const { dark, toggle: toggleTheme } = useThemeStore();
+  const { diffViewMode, setDiffViewMode, theme, toggleTheme } = useSettingsStore();
+  const dark = theme === 'dark';
+  const { addToast } = useToast();
+  const { isReviewed, toggleReviewed, getReviewedCount } = useFileReviewStore();
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const activeTab: Tab = VALID_TABS.includes(urlTab as Tab) ? (urlTab as Tab) : 'overview';
   const setActiveTab = (tab: Tab) => navigate(`/repos/${repoId}/prs/${prId}/${tab}`, { replace: true });
@@ -115,12 +93,19 @@ export function PRDetailPage() {
   const [activeConflictFile, setActiveConflictFile] = useState<string | null>(null);
   const [conflictResolving, setConflictResolving] = useState(false);
 
+  // Label state
+  const [allLabels, setAllLabels] = useState<Label[]>([]);
+  const [showLabelDropdown, setShowLabelDropdown] = useState(false);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+
   // ─── Load data ───
   useEffect(() => {
     if (!repoId || !prId) return;
     loadPR();
     loadComments();
     loadReviews();
+    loadLabels();
+    loadChecklist();
   }, [repoId, prId]);
 
   useEffect(() => {
@@ -177,18 +162,56 @@ export function PRDetailPage() {
         resolutions: conflictResolutions,
       });
       if (res.success) {
+        addToast('success', 'Conflicts resolved successfully');
         loadPR();
         setActiveTab('overview');
       } else {
-        alert(res.message);
+        addToast('error', res.message);
       }
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { addToast('error', e.message); }
     setConflictResolving(false);
   };
 
   const loadReviews = async () => {
     try { setReviews(await api.get(`/repos/${repoId}/prs/${prId}/reviews`)); }
     catch { }
+  };
+
+  const loadLabels = async () => {
+    try { setAllLabels(await api.get<Label[]>('/labels')); } catch { }
+  };
+
+  const loadChecklist = async () => {
+    try { setChecklist(await api.get(`/repos/${repoId}/prs/${prId}/checklist`)); } catch { }
+  };
+
+  const toggleChecklistItem = async (itemId: number, currentChecked: boolean) => {
+    await api.patch(`/repos/${repoId}/prs/${prId}/checklist/${itemId}`, { checked: !currentChecked });
+    loadChecklist();
+  };
+
+  const addLabelToPR = async (labelId: number) => {
+    try {
+      await api.post(`/repos/${repoId}/prs/${prId}/labels`, { label_id: labelId });
+      loadPR();
+      addToast('success', 'Label added');
+    } catch (e: any) { addToast('error', e.message); }
+  };
+
+  const removeLabelFromPR = async (labelId: number) => {
+    try {
+      await api.delete(`/repos/${repoId}/prs/${prId}/labels/${labelId}`);
+      loadPR();
+      addToast('success', 'Label removed');
+    } catch (e: any) { addToast('error', e.message); }
+  };
+
+  const applySuggestion = async (commentId: number) => {
+    try {
+      await api.post<{ success: boolean; message: string }>(`/repos/${repoId}/prs/${prId}/comments/${commentId}/apply-suggestion`);
+      addToast('success', 'Suggestion applied and committed');
+      loadComments();
+    } catch (e: any) { addToast('error', e.message); }
   };
 
   // ─── Load file diff ───
@@ -424,11 +447,12 @@ export function PRDetailPage() {
       });
       if (res.success) {
         setShowMerge(false);
+        addToast('success', 'Pull request merged successfully');
         loadPR();
       } else {
-        alert(res.message);
+        addToast('error', res.message);
       }
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) { addToast('error', e.message); }
   };
 
   // ─── PR status actions ───
@@ -455,6 +479,7 @@ export function PRDetailPage() {
     const handler = (e: KeyboardEvent) => {
       // Don't capture if typing in input/textarea
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === '?') { setShowShortcuts((v) => !v); return; }
       if (e.key === '1') setActiveTab('overview');
       if (e.key === '2') setActiveTab('files');
       if (e.key === '3') setActiveTab('commits');
@@ -490,30 +515,10 @@ export function PRDetailPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f5f7' }}>
-      {/* Header */}
-      <header style={{
-        background: '#0078d4', color: 'white', padding: '12px 24px',
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <Link to="/" style={{ color: 'white', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 3v12l6-3 6 3V3" />
-          </svg>
-          PRView
-        </Link>
-        <span style={{ opacity: 0.5 }}>/</span>
-        <Link to={`/repos/${repoId}/prs`} style={{ color: 'white', textDecoration: 'none' }}>Pull Requests</Link>
-        <span style={{ opacity: 0.5 }}>/</span>
-        <span>#{pr.id}</span>
-        <div style={{ marginLeft: 'auto' }}>
-          <button onClick={toggleTheme} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4,
-            color: 'white', cursor: 'pointer', padding: '4px 10px', fontSize: 14,
-          }} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
-            {dark ? '\u2600' : '\u263D'}
-          </button>
-        </div>
-      </header>
+      <Header breadcrumbs={[
+        { label: 'Pull Requests', to: `/repos/${repoId}/prs` },
+        { label: `#${pr.id}` },
+      ]} />
 
       {/* PR Header */}
       <div style={{ background: 'white', borderBottom: '1px solid #dadce0', padding: '20px 24px' }}>
@@ -543,6 +548,16 @@ export function PRDetailPage() {
                 title={pr.status !== 'completed' ? 'Click to edit title' : undefined}
               >{pr.title}</h1>
             )}
+            <button
+              onClick={() => exportPRAsMarkdown(pr, reviews, comments.filter((c) => !c.parent_id), stats)}
+              style={{
+                marginLeft: 'auto', padding: '4px 12px', background: '#f4f5f7',
+                border: '1px solid #dadce0', borderRadius: 4, cursor: 'pointer', fontSize: 12,
+              }}
+              title="Export PR as Markdown"
+            >
+              Export
+            </button>
           </div>
           <div style={{ fontSize: 13, color: '#5f6368', display: 'flex', gap: 16, alignItems: 'center' }}>
             <span>
@@ -559,6 +574,15 @@ export function PRDetailPage() {
             <span>by {pr.author}</span>
             <span>Created {new Date(pr.created_at).toLocaleDateString()}</span>
           </div>
+          {/* Labels */}
+          {pr.labels && pr.labels.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+              {pr.labels.map((label) => (
+                <LabelBadge key={label.id} name={label.name} color={label.color}
+                  onRemove={pr.status !== 'completed' ? () => removeLabelFromPR(label.id) : undefined} />
+              ))}
+            </div>
+          )}
           {/* Review badges */}
           {Object.keys(pr.review_summary).length > 0 && (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -628,14 +652,7 @@ export function PRDetailPage() {
                 </div>
                 {editingDesc ? (
                   <div>
-                    <textarea
-                      autoFocus
-                      value={editDesc}
-                      onChange={(e) => setEditDesc(e.target.value)}
-                      placeholder="Describe your changes (Markdown supported)"
-                      rows={8}
-                      style={{ width: '100%', padding: 8, border: '1px solid #dadce0', borderRadius: 4, fontSize: 13, resize: 'vertical', fontFamily: 'monospace' }}
-                    />
+                    <MarkdownEditor value={editDesc} onChange={setEditDesc} placeholder="Describe your changes (Markdown supported)" minHeight={160} />
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
                       <button onClick={() => setEditingDesc(false)} style={{ padding: '4px 12px', background: '#f4f5f7', border: '1px solid #dadce0', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
                       <button onClick={saveDescription} style={{ padding: '4px 12px', background: '#0078d4', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Save</button>
@@ -651,6 +668,24 @@ export function PRDetailPage() {
                   </div>
                 )}
               </div>
+
+              {pr.ai_summary && (
+                <div style={{
+                  background: '#f0f4ff', borderRadius: 8, padding: 20,
+                  marginBottom: 16, border: '1px solid #c6d4f0',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <h3 style={{ fontSize: 14, fontWeight: 600 }}>AI Summary</h3>
+                    <span style={{
+                      fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                      background: '#e8f0fe', color: '#1a73e8', fontWeight: 600,
+                    }}>AI Generated</span>
+                  </div>
+                  <div className="prv-markdown" style={{ fontSize: 14 }}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{pr.ai_summary}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
 
               {/* Activity Timeline */}
               <div style={{ background: 'white', borderRadius: 8, padding: 20, marginBottom: 16, border: '1px solid #dadce0' }}>
@@ -789,12 +824,127 @@ export function PRDetailPage() {
                         background: voteDisplay[r.vote]?.color || '#5f6368', display: 'inline-block',
                       }} />
                       <strong>{r.reviewer}</strong>
+                      {r.is_ai_generated && (
+                        <span style={{
+                          fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                          background: '#e8f0fe', color: '#1a73e8',
+                        }}>AI</span>
+                      )}
                       <span style={{ color: voteDisplay[r.vote]?.color }}>{voteDisplay[r.vote]?.label}</span>
                     </div>
                     {r.body && <div style={{ marginLeft: 14, color: '#5f6368', fontSize: 12 }}>{r.body}</div>}
                   </div>
                 ))}
               </div>
+
+              {/* Required Reviewers */}
+              {pr.required_reviewers && pr.required_reviewers.length > 0 && (
+                <div style={{ background: 'white', borderRadius: 8, padding: 16, marginBottom: 12, border: '1px solid #dadce0' }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Required Reviewers</h4>
+                  {pr.required_reviewers.map((name) => {
+                    const status = pr.approval_status?.[name] || 'pending';
+                    const approved = status === 'approved' || status === 'approved_with_suggestions';
+                    return (
+                      <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 13 }}>
+                        <span style={{
+                          width: 16, height: 16, borderRadius: '50%', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center', fontSize: 10,
+                          background: approved ? '#dff6dd' : status === 'rejected' ? '#fdd8db' : '#f4f5f7',
+                          color: approved ? '#107c10' : status === 'rejected' ? '#d13438' : '#5f6368',
+                        }}>
+                          {approved ? '\u2713' : status === 'rejected' ? '\u2717' : '\u25CB'}
+                        </span>
+                        <Avatar name={name} size={20} />
+                        <span>{name}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: approved ? '#107c10' : '#5f6368' }}>
+                          {approved ? 'Approved' : status === 'rejected' ? 'Rejected' : status === 'wait_for_author' ? 'Changes requested' : 'Pending'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {!pr.required_reviewers.every((n) => {
+                    const s = pr.approval_status?.[n];
+                    return s === 'approved' || s === 'approved_with_suggestions';
+                  }) && (
+                    <div style={{ marginTop: 8, padding: '6px 10px', background: '#fff4ce', borderRadius: 4, fontSize: 12, color: '#ca5010' }}>
+                      Not all required reviewers have approved
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Labels */}
+              <div style={{ background: 'white', borderRadius: 8, padding: 16, marginBottom: 12, border: '1px solid #dadce0', position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 600 }}>Labels</h4>
+                  {pr.status !== 'completed' && (
+                    <button onClick={() => { setShowLabelDropdown(!showLabelDropdown); if (!showLabelDropdown) loadLabels(); }}
+                      style={{ padding: '2px 8px', background: '#f4f5f7', border: '1px solid #dadce0', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>
+                      + Add
+                    </button>
+                  )}
+                </div>
+                {pr.labels && pr.labels.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {pr.labels.map((l) => (
+                      <LabelBadge key={l.id} name={l.name} color={l.color}
+                        onRemove={pr.status !== 'completed' ? () => removeLabelFromPR(l.id) : undefined} />
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: '#5f6368' }}>No labels</div>
+                )}
+                {showLabelDropdown && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                    background: 'white', border: '1px solid #dadce0', borderRadius: 6,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)', marginTop: 4, maxHeight: 200, overflow: 'auto',
+                  }}>
+                    {allLabels.filter((l) => !pr.labels?.some((pl) => pl.id === l.id)).map((l) => (
+                      <div key={l.id} onClick={() => { addLabelToPR(l.id); setShowLabelDropdown(false); }}
+                        style={{ padding: '6px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f9f9f9'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+                        <span style={{ width: 12, height: 12, borderRadius: '50%', background: l.color, display: 'inline-block' }} />
+                        {l.name}
+                      </div>
+                    ))}
+                    {allLabels.filter((l) => !pr.labels?.some((pl) => pl.id === l.id)).length === 0 && (
+                      <div style={{ padding: 12, textAlign: 'center', color: '#5f6368', fontSize: 13 }}>No more labels</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {checklist.length > 0 && (
+                <div style={{ background: 'white', borderRadius: 8, padding: 16, marginBottom: 12, border: '1px solid #dadce0' }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Review Checklist</h4>
+                  {checklist.map((item) => (
+                    <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6, fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={item.checked}
+                        onChange={() => toggleChecklistItem(item.id, item.checked)}
+                        style={{ marginTop: 2, accentColor: '#107c10' }}
+                      />
+                      <div>
+                        <span style={{ textDecoration: item.checked ? 'line-through' : 'none', color: item.checked ? '#5f6368' : 'inherit' }}>
+                          {item.label}
+                        </span>
+                        {item.category && (
+                          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: '#e8f0fe', color: '#1a73e8', marginLeft: 4 }}>
+                            {item.category}
+                          </span>
+                        )}
+                        {item.details && <div style={{ fontSize: 11, color: '#5f6368', marginTop: 2 }}>{item.details}</div>}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#5f6368' }}>
+                    {checklist.filter((i) => i.checked).length}/{checklist.length} completed
+                  </div>
+                </div>
+              )}
 
               {/* Stats */}
               {stats && (
@@ -820,13 +970,29 @@ export function PRDetailPage() {
               maxHeight: 'calc(100vh - 220px)', overflow: 'auto', position: 'sticky', top: 16,
             }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #dadce0', fontSize: 13, fontWeight: 600 }}>
-                Changed Files ({files.length})
-                {stats && (
-                  <span style={{ fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
-                    <span style={{ color: '#107c10' }}>+{stats.insertions}</span>
-                    {' '}
-                    <span style={{ color: '#d13438' }}>-{stats.deletions}</span>
-                  </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Changed Files ({files.length})</span>
+                  {stats && (
+                    <span style={{ fontWeight: 400, fontSize: 12 }}>
+                      <span style={{ color: '#107c10' }}>+{stats.insertions}</span>
+                      {' '}
+                      <span style={{ color: '#d13438' }}>-{stats.deletions}</span>
+                    </span>
+                  )}
+                </div>
+                {files.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#5f6368', marginBottom: 3 }}>
+                      <span>{getReviewedCount(String(prId))} of {files.length} reviewed</span>
+                    </div>
+                    <div style={{ height: 3, background: '#e8eaed', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', background: '#107c10', borderRadius: 2,
+                        width: `${(getReviewedCount(String(prId)) / files.length) * 100}%`,
+                        transition: 'width 0.3s',
+                      }} />
+                    </div>
+                  </div>
                 )}
               </div>
               <div
@@ -842,6 +1008,7 @@ export function PRDetailPage() {
               {files.map((f) => {
                 const statusIcon: Record<string, string> = { added: 'A', modified: 'M', deleted: 'D', renamed: 'R' };
                 const statusColors: Record<string, string> = { added: '#107c10', modified: '#ca5010', deleted: '#d13438', renamed: '#0078d4' };
+                const reviewed = isReviewed(String(prId), f.path);
                 return (
                   <div
                     key={f.path}
@@ -851,10 +1018,19 @@ export function PRDetailPage() {
                       background: selectedFile === f.path ? '#e8f4fd' : 'transparent',
                       borderBottom: '1px solid #f0f0f0',
                       display: 'flex', alignItems: 'center', gap: 8,
+                      opacity: reviewed ? 0.6 : 1,
                     }}
                     onMouseEnter={(e) => { if (selectedFile !== f.path) e.currentTarget.style.background = '#f9f9f9'; }}
                     onMouseLeave={(e) => { if (selectedFile !== f.path) e.currentTarget.style.background = 'transparent'; }}
                   >
+                    <input
+                      type="checkbox"
+                      checked={reviewed}
+                      onChange={(e) => { e.stopPropagation(); toggleReviewed(String(prId), f.path); }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ cursor: 'pointer', accentColor: '#107c10' }}
+                      title={reviewed ? 'Mark as unreviewed' : 'Mark as reviewed'}
+                    />
                     <span style={{
                       width: 18, height: 18, borderRadius: 3, fontSize: 11,
                       background: (statusColors[f.status] || '#5f6368') + '20',
@@ -1490,90 +1666,9 @@ export function PRDetailPage() {
           </div>
         </Modal>
       )}
+
+      <ShortcutHelpModal open={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   );
 }
 
-// ─── Reusable Components ───
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-      }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        background: 'white', borderRadius: 8, padding: 28, width: 520,
-        maxHeight: '80vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-      }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function CommentBlock({
-  comment, onResolve, onDelete, onReply,
-}: {
-  comment: Comment;
-  onResolve: (id: number) => void;
-  onDelete: (id: number) => void;
-  onReply: (id: number) => void;
-}) {
-  return (
-    <div style={{
-      padding: 12, borderRadius: 6, marginBottom: 8,
-      background: comment.status === 'resolved' ? '#f9f9f9' : '#fff',
-      border: '1px solid #e8eaed',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <div style={{ fontSize: 13 }}>
-          <strong>{comment.author}</strong>
-          <span style={{ color: '#5f6368', marginLeft: 8, fontSize: 12 }}>
-            {new Date(comment.created_at).toLocaleString()}
-          </span>
-          {comment.status === 'resolved' && (
-            <span style={{
-              marginLeft: 8, fontSize: 11, padding: '1px 6px', borderRadius: 8,
-              background: '#dff6dd', color: '#107c10',
-            }}>
-              Resolved
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={() => onReply(comment.id)}
-            style={{ padding: '2px 8px', fontSize: 11, background: '#f4f5f7', border: '1px solid #dadce0', borderRadius: 3, cursor: 'pointer' }}>
-            Reply
-          </button>
-          <button onClick={() => onResolve(comment.id)}
-            style={{ padding: '2px 8px', fontSize: 11, background: '#f4f5f7', border: '1px solid #dadce0', borderRadius: 3, cursor: 'pointer' }}>
-            {comment.status === 'resolved' ? 'Reactivate' : 'Resolve'}
-          </button>
-          <button onClick={() => onDelete(comment.id)}
-            style={{ padding: '2px 8px', fontSize: 11, background: '#fdd8db', border: 'none', borderRadius: 3, cursor: 'pointer', color: '#d13438' }}>
-            Delete
-          </button>
-        </div>
-      </div>
-      <div className="prv-markdown" style={{ fontSize: 13 }}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{comment.body}</ReactMarkdown>
-      </div>
-      {comment.file_path && (
-        <div style={{ fontSize: 11, color: '#5f6368', marginTop: 4, fontFamily: 'monospace' }}>
-          {comment.file_path}{comment.line_number ? `:${comment.line_number}` : ''}
-        </div>
-      )}
-      {comment.replies.length > 0 && (
-        <div style={{ marginTop: 8, paddingLeft: 16, borderLeft: '2px solid #e8eaed' }}>
-          {comment.replies.map((r) => (
-            <CommentBlock key={r.id} comment={r} onResolve={onResolve} onDelete={onDelete} onReply={onReply} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}

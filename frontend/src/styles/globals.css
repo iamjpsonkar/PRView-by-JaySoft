@@ -341,3 +341,9 @@ td.d2h-code-side-emptyplaceholder {
 [data-theme="dark"] td.d2h-code-linenumber, [data-theme="dark"] td.d2h-code-side-linenumber { color: rgba(255,255,255,0.3) !important; border-right-color: #3e3e42 !important; }
 [data-theme="dark"] .d2h-emptyplaceholder, [data-theme="dark"] .d2h-code-side-emptyplaceholder, [data-theme="dark"] td.d2h-emptyplaceholder, [data-theme="dark"] td.d2h-code-side-emptyplaceholder { background: #252526 !important; }
 [data-theme="dark"] .d2h-file-side-diff:first-child { border-right-color: #3e3e42 !important; }
+
+/* ─── Toast animation ─── */
+@keyframes toast-slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}

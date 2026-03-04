@@ -607,9 +607,289 @@ GET /api/repos/{repo_id}/branches
 
 ---
 
+## AI Agent Features
+
+PRView has first-class support for AI agents. These features let agents identify themselves, work efficiently, and provide structured output.
+
+### Agent Identity
+
+Set the `X-PRView-User` header to identify the agent and `is_ai_generated` + `ai_agent_name` on comments and reviews:
+
+```bash
+# Comment with AI identity
+curl -X POST http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/comments \
+  -H "Content-Type: application/json" \
+  -H "X-PRView-User: my-bot" \
+  -d '{"body": "Potential null reference here", "file_path": "src/main.ts", "line_number": 42, "is_ai_generated": true, "ai_agent_name": "my-bot"}'
+
+# Review with AI identity
+curl -X POST http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/reviews \
+  -H "Content-Type: application/json" \
+  -d '{"vote": "approved_with_suggestions", "body": "Summary", "is_ai_generated": true, "ai_agent_name": "my-bot"}'
+```
+
+AI comments/reviews display with a special badge in the UI.
+
+**Filter AI-only comments:**
+```
+GET /api/repos/{repo_id}/prs/{pr_id}/comments?ai_only=true
+```
+
+---
+
+### Batch Comments
+
+Submit multiple comments in a single request (much more efficient than N separate calls):
+
+```bash
+curl -X POST http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/comments/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "comments": [
+      {"body": "Issue 1", "file_path": "src/a.ts", "line_number": 10, "is_ai_generated": true, "ai_agent_name": "my-bot"},
+      {"body": "Issue 2", "file_path": "src/b.ts", "line_number": 25, "is_ai_generated": true, "ai_agent_name": "my-bot"},
+      {"body": "Overall feedback", "is_ai_generated": true, "ai_agent_name": "my-bot"}
+    ]
+  }'
+```
+
+**Response:**
+```json
+{
+  "created": [ /* array of CommentResponse objects */ ],
+  "errors": []
+}
+```
+
+---
+
+### Comment Suggestions
+
+Attach code suggestions to inline comments:
+
+```bash
+curl -X POST http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/comments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "body": "Consider using a constant here",
+    "file_path": "src/config.ts",
+    "line_number": 15,
+    "suggestion": "const MAX_RETRIES = 3;",
+    "is_ai_generated": true,
+    "ai_agent_name": "my-bot"
+  }'
+```
+
+Users can apply suggestions directly from the UI. Check `suggestion_applied` (0 or 1) in the response.
+
+---
+
+### PR Context Endpoint (Single-Call)
+
+Get everything about a PR in **one request** — ideal for LLM context windows:
+
+```bash
+# Get full context
+curl "http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/context?include=diffs,comments,reviews,commits"
+
+# Selective (only comments and reviews)
+curl "http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/context?include=comments,reviews"
+
+# Limit diff size
+curl "http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/context?include=diffs,comments&max_diff_lines=500"
+```
+
+**Response:**
+```json
+{
+  "pr": { /* full PRResponse object */ },
+  "stats": {"files_changed": 5, "insertions": 120, "deletions": 30},
+  "files": [ /* array of changed files */ ],
+  "full_diff": "diff --git ...",
+  "comments": [ /* threaded comment tree */ ],
+  "reviews": [ /* review objects */ ],
+  "commits": [ /* commit objects */ ]
+}
+```
+
+**`include` values:** `diffs`, `comments`, `reviews`, `commits` (comma-separated). Defaults to all.
+
+---
+
+### PR Summary
+
+Store and retrieve AI-generated summaries:
+
+```bash
+# Set summary
+curl -X POST http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/summary \
+  -H "Content-Type: application/json" \
+  -d '{"summary": "This PR adds JWT authentication with login/logout endpoints and middleware.", "agent_name": "my-bot"}'
+
+# Get summary
+curl http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/summary
+```
+
+**Response:**
+```json
+{
+  "summary": "This PR adds JWT authentication...",
+  "agent_name": "my-bot",
+  "updated_at": "2025-06-01T14:00:00"
+}
+```
+
+The summary also appears as `ai_summary` on the PR detail response and renders as a blue card in the UI.
+
+---
+
+### Review Checklist
+
+Create structured assessment items:
+
+```bash
+# Create checklist
+curl -X POST http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/checklist \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"label": "No SQL injection risks", "checked": true, "category": "security"},
+      {"label": "Error handling covers edge cases", "checked": false, "category": "quality", "details": "Missing try/catch in auth middleware"},
+      {"label": "Tests added for new endpoints", "checked": true, "category": "testing"}
+    ]
+  }'
+
+# List checklist
+curl http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/checklist
+
+# Toggle item
+curl -X PATCH http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/checklist/{item_id} \
+  -H "Content-Type: application/json" \
+  -d '{"checked": true}'
+
+# Delete item
+curl -X DELETE http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/checklist/{item_id}
+```
+
+---
+
+### Labels
+
+Add labels to PRs for categorization:
+
+```bash
+# List available labels
+curl http://localhost:8121/api/labels
+
+# Add label to PR
+curl -X POST http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/labels \
+  -H "Content-Type: application/json" \
+  -d '{"label_id": 2}'
+
+# Remove label from PR
+curl -X DELETE http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/labels/{label_id}
+
+# Filter PRs by label
+curl "http://localhost:8121/api/repos/{repo_id}/prs?label=bug"
+```
+
+Default labels: `bug`, `feature`, `breaking-change`, `WIP`, `docs`.
+
+---
+
+### Webhooks
+
+Register URLs to receive HTTP POST notifications on events:
+
+```bash
+# Register webhook
+curl -X POST http://localhost:8121/api/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://my-service.com/webhook", "events": ["pr.created", "comment.created"]}'
+
+# List webhooks
+curl http://localhost:8121/api/webhooks
+
+# Delete webhook
+curl -X DELETE http://localhost:8121/api/webhooks/{webhook_id}
+```
+
+**Available events:** `pr.created`, `pr.updated`, `pr.merged`, `comment.created`, `review.created`, `*` (all events).
+
+**Webhook payload:**
+```json
+{
+  "event": "comment.created",
+  "timestamp": "2025-06-01T14:00:00",
+  "pr_id": 2,
+  "repo_id": "0d2a12a561f2",
+  ...
+}
+```
+
+---
+
+### Branch Comparison (without PR)
+
+Compare two branches before creating a PR:
+
+```bash
+# Stats
+curl http://localhost:8121/api/repos/{repo_id}/compare/{source}...{target}/stats
+
+# Changed files
+curl http://localhost:8121/api/repos/{repo_id}/compare/{source}...{target}/files
+
+# Full diff
+curl http://localhost:8121/api/repos/{repo_id}/compare/{source}...{target}/diff
+
+# Single file diff
+curl "http://localhost:8121/api/repos/{repo_id}/compare/{source}...{target}/diff/file?path=src/main.ts"
+
+# Commits between branches
+curl http://localhost:8121/api/repos/{repo_id}/compare/{source}...{target}/commits
+```
+
+---
+
+### Blame
+
+Get per-line blame information for a file:
+
+```bash
+curl "http://localhost:8121/api/repos/{repo_id}/prs/{pr_id}/diff/blame?path=src/main.ts"
+```
+
+---
+
 ## Recommended Workflow for an AI Agent
 
-### Reviewing a PR
+### Optimized 5-Step Review (uses batch + context endpoints)
+
+```
+Step 1 — Get full PR context in ONE call
+  GET /api/repos/{repo_id}/prs/{pr_id}/context?include=diffs,comments,reviews,commits
+
+Step 2 — Analyze the diffs and leave all feedback at once
+  POST /api/repos/{repo_id}/prs/{pr_id}/comments/batch
+    → {"comments": [{...}, {...}, ...]}
+
+Step 3 — Create a structured checklist
+  POST /api/repos/{repo_id}/prs/{pr_id}/checklist
+    → {"items": [{"label": "...", "checked": true/false, "category": "..."}, ...]}
+
+Step 4 — Set an AI summary
+  POST /api/repos/{repo_id}/prs/{pr_id}/summary
+    → {"summary": "...", "agent_name": "my-bot"}
+
+Step 5 — Submit review
+  POST /api/repos/{repo_id}/prs/{pr_id}/reviews
+    → {"vote": "approved_with_suggestions", "body": "...", "is_ai_generated": true, "ai_agent_name": "my-bot"}
+```
+
+This workflow requires only **5 API calls** to do a complete review (compared to 7+ with the traditional approach).
+
+### Traditional Step-by-Step Review
 
 ```
 Step 1 — Understand the PR
@@ -667,3 +947,5 @@ Step 3 — Resolve addressed comments
 - The diff is computed against the **merge base** (common ancestor of source and target), not the target branch tip directly. This means only the PR's own changes are shown (same behavior as GitHub/Azure DevOps).
 - Only one active/draft PR is allowed per source→target branch pair.
 - Errors return `{"detail": "error message"}` with appropriate HTTP status codes (400, 404, 409).
+- POST endpoints for creating resources return **201 Created**.
+- Set `X-PRView-User` header to identify your agent (defaults to `"local-user"`).

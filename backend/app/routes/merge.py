@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Repository, PullRequest
+from app.models import Repository, PullRequest, Review, RequiredReviewer
 from app.schemas import MergeCheckResponse, MergeRequest, MergeResponse, ConflictResolveRequest
 from app.services.git_service import GitService
 
@@ -38,6 +38,21 @@ def execute_merge(repo_id: str, pr_id: int, req: MergeRequest, db: Session = Dep
 
     if pr.status != "active":
         raise HTTPException(status_code=400, detail="Can only merge active pull requests")
+
+    # Check that all required reviewers have approved
+    required = db.query(RequiredReviewer).filter(RequiredReviewer.pr_id == pr_id).all()
+    if required:
+        reviews = db.query(Review).filter(Review.pr_id == pr_id).all()
+        latest_votes = {}
+        for r in reviews:
+            latest_votes[r.reviewer] = r.vote
+        for rr in required:
+            vote = latest_votes.get(rr.reviewer_name)
+            if vote not in ("approved", "approved_with_suggestions"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Required reviewer '{rr.reviewer_name}' has not approved this PR"
+                )
 
     valid_strategies = {"merge", "squash", "rebase"}
     if req.strategy not in valid_strategies:

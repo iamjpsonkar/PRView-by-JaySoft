@@ -47,6 +47,23 @@ class BranchInfo(BaseModel):
     commit_message: str
 
 
+# --- Labels ---
+class LabelCreateRequest(BaseModel):
+    name: str
+    color: str = "#0078d4"
+    description: str = ""
+
+
+class LabelResponse(BaseModel):
+    id: int
+    name: str
+    color: str
+    description: str
+
+    class Config:
+        from_attributes = True
+
+
 # --- Pull Request ---
 class PRCreateRequest(BaseModel):
     title: str
@@ -54,6 +71,7 @@ class PRCreateRequest(BaseModel):
     source_branch: str
     target_branch: str
     status: str = "active"
+    required_reviewers: list[str] = []
 
 
 class PRUpdateRequest(BaseModel):
@@ -77,6 +95,10 @@ class PRResponse(BaseModel):
     completed_at: Optional[datetime] = None
     comment_count: int = 0
     review_summary: Optional[dict] = None
+    required_reviewers: list[str] = []
+    approval_status: dict = {}
+    labels: list[LabelResponse] = []
+    ai_summary: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -121,6 +143,9 @@ class CommentCreateRequest(BaseModel):
     line_number: Optional[int] = None
     line_type: Optional[str] = None
     parent_id: Optional[int] = None
+    suggestion: Optional[str] = None
+    is_ai_generated: bool = False
+    ai_agent_name: Optional[str] = None
 
 
 class CommentUpdateRequest(BaseModel):
@@ -137,6 +162,10 @@ class CommentResponse(BaseModel):
     body: str
     author: str
     status: str
+    suggestion: Optional[str] = None
+    suggestion_applied: int = 0
+    is_ai_generated: bool = False
+    ai_agent_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     replies: list["CommentResponse"] = []
@@ -145,10 +174,17 @@ class CommentResponse(BaseModel):
         from_attributes = True
 
 
+class SuggestionApplyRequest(BaseModel):
+    """Optional commit message for applying suggestion"""
+    commit_message: Optional[str] = None
+
+
 # --- Review ---
 class ReviewCreateRequest(BaseModel):
     vote: str  # approved, approved_with_suggestions, wait_for_author, rejected
     body: str = ""
+    is_ai_generated: bool = False
+    ai_agent_name: Optional[str] = None
 
 
 class ReviewResponse(BaseModel):
@@ -158,6 +194,8 @@ class ReviewResponse(BaseModel):
     vote: str
     body: str
     created_at: datetime
+    is_ai_generated: bool = False
+    ai_agent_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -185,3 +223,76 @@ class MergeResponse(BaseModel):
     success: bool
     message: str
     merge_commit: Optional[str] = None
+
+
+# --- Batch Comments ---
+class BatchCommentCreateRequest(BaseModel):
+    comments: list[CommentCreateRequest]
+
+
+class BatchCommentResponse(BaseModel):
+    created: list[CommentResponse] = []
+    errors: list[dict] = []
+
+
+# --- PR Summary ---
+class PRSummaryRequest(BaseModel):
+    summary: str
+    agent_name: Optional[str] = None
+
+
+class PRSummaryResponse(BaseModel):
+    summary: Optional[str] = None
+    agent_name: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+# --- Webhooks ---
+class WebhookCreateRequest(BaseModel):
+    url: str
+    events: list[str]
+    secret: Optional[str] = None
+
+
+class WebhookResponse(BaseModel):
+    id: int
+    url: str
+    events: list[str]
+    active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# --- Checklist ---
+class ChecklistItemCreate(BaseModel):
+    label: str
+    checked: bool = False
+    details: Optional[str] = None
+    category: Optional[str] = None
+
+
+class ChecklistCreateRequest(BaseModel):
+    items: list[ChecklistItemCreate]
+
+
+class ChecklistItemResponse(BaseModel):
+    id: int
+    pr_id: int
+    label: str
+    checked: bool
+    details: Optional[str] = None
+    category: Optional[str] = None
+    author: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChecklistItemUpdateRequest(BaseModel):
+    label: Optional[str] = None
+    checked: Optional[bool] = None
+    details: Optional[str] = None

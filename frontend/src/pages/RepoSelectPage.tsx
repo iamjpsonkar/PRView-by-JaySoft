@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useRepoStore } from '../stores/repo.store';
-import { useThemeStore } from '../stores/theme.store';
+import { Header } from '../components/layout/Header';
+import { useToast } from '../components/layout/ToastProvider';
 
 interface RepoInfo {
   id: string;
@@ -28,7 +29,7 @@ interface ValidateResponse {
 export function RepoSelectPage() {
   const navigate = useNavigate();
   const setRepo = useRepoStore((s) => s.setRepo);
-  const { dark, toggle: toggleTheme } = useThemeStore();
+  const { addToast } = useToast();
   const [path, setPath] = useState('');
   const [recentRepos, setRecentRepos] = useState<RepoInfo[]>([]);
   const [browseEntries, setBrowseEntries] = useState<DirEntry[]>([]);
@@ -68,7 +69,7 @@ export function RepoSelectPage() {
       setRepo(res.repo_id, res.name, res.path);
       navigate(`/repos/${res.repo_id}/prs`);
     } catch (e: any) {
-      alert(e.message);
+      addToast('error', e.message);
     }
     setLoading(false);
   };
@@ -85,24 +86,7 @@ export function RepoSelectPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f5f7' }}>
-      {/* Header */}
-      <header style={{
-        background: '#0078d4', color: 'white', padding: '12px 24px',
-        display: 'flex', alignItems: 'center', gap: 12
-      }}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M6 3v12l6-3 6 3V3" />
-        </svg>
-        <h1 style={{ fontSize: 20, fontWeight: 600 }}>PRView</h1>
-        <div style={{ marginLeft: 'auto' }}>
-          <button onClick={toggleTheme} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4,
-            color: 'white', cursor: 'pointer', padding: '4px 10px', fontSize: 14,
-          }} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
-            {dark ? '\u2600' : '\u263D'}
-          </button>
-        </div>
-      </header>
+      <Header breadcrumbs={[]} />
 
       <div style={{ maxWidth: 720, margin: '48px auto', padding: '0 24px' }}>
         <div style={{

@@ -1,0 +1,255 @@
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { api } from '../api/client';
+import { useSettingsStore } from '../stores/settings.store';
+import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui';
+import 'diff2html/bundles/css/diff2html.min.css';
+import { Header } from '../components/layout/Header';
+import type { DiffFile, DiffStats, Commit, BranchInfo } from '../types';
+
+export function ComparePage() {
+  const { repoId, branches: urlBranches } = useParams<{ repoId: string; branches: string }>();
+  const navigate = useNavigate();
+  const { diffViewMode, setDiffViewMode } = useSettingsStore();
+
+  // Parse branches from URL (source...target)
+  const parts = (urlBranches || '').split('...');
+  const [source, setSource] = useState(parts[0] || '');
+  const [target, setTarget] = useState(parts[1] || '');
+
+  const [allBranches, setAllBranches] = useState<BranchInfo[]>([]);
+  const [files, setFiles] = useState<DiffFile[]>([]);
+  const [stats, setStats] = useState<DiffStats | null>(null);
+  const [commits, setCommits] = useState<Commit[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileDiffs, setFileDiffs] = useState<Record<string, string>>({});
+  const [fullDiff, setFullDiff] = useState<string | null>(null);
+  const diffRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (repoId) {
+      api.get<BranchInfo[]>(`/repos/${repoId}/branches`).then(setAllBranches).catch(() => {});
+    }
+  }, [repoId]);
+
+  useEffect(() => {
+    if (source && target && source !== target) {
+      loadComparison();
+    }
+  }, [source, target]);
+
+  const loadComparison = async () => {
+    setLoading(true);
+    try {
+      const [f, s, c] = await Promise.all([
+        api.get<DiffFile[]>(`/repos/${repoId}/compare/${encodeURIComponent(source)}...${encodeURIComponent(target)}/files`),
+        api.get<DiffStats>(`/repos/${repoId}/compare/${encodeURIComponent(source)}...${encodeURIComponent(target)}/stats`),
+        api.get<Commit[]>(`/repos/${repoId}/compare/${encodeURIComponent(source)}...${encodeURIComponent(target)}/commits`),
+      ]);
+      setFiles(f);
+      setStats(s);
+      setCommits(c);
+      // Load full diff
+      const d = await api.get<{ diff_text: string }>(`/repos/${repoId}/compare/${encodeURIComponent(source)}...${encodeURIComponent(target)}/diff`);
+      setFullDiff(d.diff_text);
+    } catch { }
+    setLoading(false);
+  };
+
+  const loadFileDiff = async (path: string) => {
+    if (fileDiffs[path]) { setSelectedFile(path); return; }
+    try {
+      const res = await api.get<{ path: string; diff_text: string }>(
+        `/repos/${repoId}/compare/${encodeURIComponent(source)}...${encodeURIComponent(target)}/diff/file?path=${encodeURIComponent(path)}`
+      );
+      setFileDiffs((prev) => ({ ...prev, [path]: res.diff_text }));
+      setSelectedFile(path);
+    } catch { }
+  };
+
+  // Render diff
+  useEffect(() => {
+    if (!diffRef.current) return;
+    const diffText = selectedFile ? fileDiffs[selectedFile] : fullDiff;
+    if (!diffText) { diffRef.current.innerHTML = ''; return; }
+    diffRef.current.innerHTML = '';
+    try {
+      new Diff2HtmlUI(diffRef.current, diffText, {
+        drawFileList: false,
+        matching: 'lines',
+        outputFormat: diffViewMode === 'inline' ? 'line-by-line' : 'side-by-side',
+        renderNothingWhenEmpty: false,
+      }).draw();
+    } catch {
+      diffRef.current.innerHTML = `<pre style="padding:16px;font-size:12px;overflow:auto">${diffText.replace(/</g, '&lt;')}</pre>`;
+    }
+  }, [selectedFile, fileDiffs, fullDiff, diffViewMode]);
+
+  const statusIcon: Record<string, string> = { added: 'A', modified: 'M', deleted: 'D', renamed: 'R' };
+  const statusColors: Record<string, string> = { added: '#107c10', modified: '#ca5010', deleted: '#d13438', renamed: '#0078d4' };
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#f4f5f7' }}>
+      <Header breadcrumbs={[
+        { label: 'Pull Requests', to: `/repos/${repoId}/prs` },
+        { label: 'Compare Branches' },
+      ]} />
+
+      {/* Branch selectors */}
+      <div style={{ background: 'white', borderBottom: '1px solid #dadce0', padding: '16px 24px' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <select
+            value={source}
+            onChange={(e) => { setSource(e.target.value); setSelectedFile(null); setFileDiffs({}); setFullDiff(null); }}
+            style={{ padding: '8px 12px', border: '1px solid #dadce0', borderRadius: 6, fontSize: 14, minWidth: 200 }}
+          >
+            <option value="">Select source branch...</option>
+            {allBranches.map((b) => (
+              <option key={b.name} value={b.name}>{b.name}{b.is_current ? ' (HEAD)' : ''}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: 16, color: '#5f6368' }}>...</span>
+          <select
+            value={target}
+            onChange={(e) => { setTarget(e.target.value); setSelectedFile(null); setFileDiffs({}); setFullDiff(null); }}
+            style={{ padding: '8px 12px', border: '1px solid #dadce0', borderRadius: 6, fontSize: 14, minWidth: 200 }}
+          >
+            <option value="">Select target branch...</option>
+            {allBranches.map((b) => (
+              <option key={b.name} value={b.name}>{b.name}{b.is_current ? ' (HEAD)' : ''}</option>
+            ))}
+          </select>
+          {source && target && source !== target && (
+            <button
+              onClick={() => navigate(`/repos/${repoId}/prs`, {
+                state: { prefillSource: source, prefillTarget: target },
+              })}
+              style={{
+                marginLeft: 'auto', padding: '8px 16px', background: '#107c10', color: 'white',
+                border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13,
+              }}
+            >
+              Create PR from this comparison
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Stats summary */}
+      {stats && (
+        <div style={{ maxWidth: 1200, margin: '16px auto', padding: '0 24px' }}>
+          <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
+            <span>{stats.files_changed} files changed</span>
+            <span style={{ color: '#107c10' }}>+{stats.insertions} insertions</span>
+            <span style={{ color: '#d13438' }}>-{stats.deletions} deletions</span>
+            <span>{commits.length} commits</span>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ padding: 48, textAlign: 'center', color: '#5f6368' }}>Loading comparison...</div>
+      ) : source && target && source !== target && files.length > 0 ? (
+        <div style={{ maxWidth: '100%', margin: '8px auto', padding: '0 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 16 }}>
+            {/* File tree */}
+            <div style={{
+              background: 'white', borderRadius: 8, border: '1px solid #dadce0',
+              maxHeight: 'calc(100vh - 280px)', overflow: 'auto', position: 'sticky', top: 16,
+            }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #dadce0', fontSize: 13, fontWeight: 600 }}>
+                Changed Files ({files.length})
+              </div>
+              <div
+                onClick={() => setSelectedFile(null)}
+                style={{
+                  padding: '8px 16px', cursor: 'pointer', fontSize: 13,
+                  background: !selectedFile ? '#e8f4fd' : 'transparent',
+                  borderBottom: '1px solid #f0f0f0', fontWeight: 600,
+                }}
+              >
+                All files
+              </div>
+              {files.map((f) => (
+                <div
+                  key={f.path}
+                  onClick={() => loadFileDiff(f.path)}
+                  style={{
+                    padding: '8px 16px', cursor: 'pointer', fontSize: 13,
+                    background: selectedFile === f.path ? '#e8f4fd' : 'transparent',
+                    borderBottom: '1px solid #f0f0f0',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}
+                  onMouseEnter={(e) => { if (selectedFile !== f.path) e.currentTarget.style.background = '#f9f9f9'; }}
+                  onMouseLeave={(e) => { if (selectedFile !== f.path) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span style={{
+                    width: 18, height: 18, borderRadius: 3, fontSize: 11,
+                    background: (statusColors[f.status] || '#5f6368') + '20',
+                    color: statusColors[f.status] || '#5f6368',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 700, flexShrink: 0,
+                  }}>
+                    {statusIcon[f.status] || 'M'}
+                  </span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left' }}>
+                    {f.path}
+                  </span>
+                  <span style={{ fontSize: 11, flexShrink: 0 }}>
+                    <span style={{ color: '#107c10' }}>+{f.insertions}</span>
+                    {' '}
+                    <span style={{ color: '#d13438' }}>-{f.deletions}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Diff viewer */}
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <div style={{
+                background: 'white', borderRadius: '8px 8px 0 0', border: '1px solid #dadce0',
+                borderBottom: 'none', padding: '8px 16px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  {selectedFile || 'All changes'}
+                </span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button
+                    onClick={() => setDiffViewMode('inline')}
+                    style={{
+                      padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
+                      background: diffViewMode === 'inline' ? '#0078d4' : 'white',
+                      color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
+                    }}
+                  >Inline</button>
+                  <button
+                    onClick={() => setDiffViewMode('side-by-side')}
+                    style={{
+                      padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
+                      background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
+                      color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
+                    }}
+                  >Side by Side</button>
+                </div>
+              </div>
+              <div style={{
+                background: 'white', borderRadius: '0 0 8px 8px', border: '1px solid #dadce0',
+                overflow: 'hidden', maxHeight: 'calc(100vh - 300px)',
+              }}>
+                <div ref={diffRef} style={{ overflow: 'auto', maxHeight: 'calc(100vh - 300px)' }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : source && target && source === target ? (
+        <div style={{ padding: 48, textAlign: 'center', color: '#5f6368' }}>Source and target branches must be different</div>
+      ) : !source || !target ? (
+        <div style={{ padding: 48, textAlign: 'center', color: '#5f6368' }}>Select two branches to compare</div>
+      ) : (
+        <div style={{ padding: 48, textAlign: 'center', color: '#5f6368' }}>No differences found between branches</div>
+      )}
+    </div>
+  );
+}

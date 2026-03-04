@@ -2,7 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useRepoStore } from '../stores/repo.store';
-import { useThemeStore } from '../stores/theme.store';
+import { useSettingsStore } from '../stores/settings.store';
+import { Header } from '../components/layout/Header';
+import { useToast } from '../components/layout/ToastProvider';
+import { LabelBadge } from '../components/pr/LabelBadge';
+
+interface PRLabel {
+  id: number;
+  name: string;
+  color: string;
+  description: string;
+}
 
 interface PR {
   id: number;
@@ -16,6 +26,7 @@ interface PR {
   updated_at: string;
   comment_count: number;
   review_summary: Record<string, string>;
+  labels: PRLabel[];
 }
 
 interface BranchInfo {
@@ -29,7 +40,7 @@ export function PRListPage() {
   const { repoId } = useParams<{ repoId: string }>();
   const navigate = useNavigate();
   const { repoName, setRepo } = useRepoStore();
-  const { dark, toggle: toggleTheme } = useThemeStore();
+  const { addToast } = useToast();
   const [prs, setPrs] = useState<PR[]>([]);
   const [filter, setFilter] = useState('active');
   const [showCreate, setShowCreate] = useState(false);
@@ -72,7 +83,7 @@ export function PRListPage() {
       setNewPR({ title: '', description: '', source_branch: '', target_branch: '', status: 'active' });
       navigate(`/repos/${repoId}/prs/${pr.id}`);
     } catch (e: any) {
-      alert(e.message);
+      addToast('error', e.message);
     }
   };
 
@@ -85,30 +96,10 @@ export function PRListPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f5f7' }}>
-      {/* Header */}
-      <header style={{
-        background: '#0078d4', color: 'white', padding: '12px 24px',
-        display: 'flex', alignItems: 'center', gap: 16
-      }}>
-        <Link to="/" style={{ color: 'white', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 3v12l6-3 6 3V3" />
-          </svg>
-          <span style={{ fontWeight: 600 }}>PRView</span>
-        </Link>
-        <span style={{ opacity: 0.7 }}>/</span>
-        <span style={{ fontWeight: 600 }}>{repoName || repoId}</span>
-        <span style={{ opacity: 0.7 }}>/</span>
-        <span>Pull Requests</span>
-        <div style={{ marginLeft: 'auto' }}>
-          <button onClick={toggleTheme} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4,
-            color: 'white', cursor: 'pointer', padding: '4px 10px', fontSize: 14,
-          }} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
-            {dark ? '\u2600' : '\u263D'}
-          </button>
-        </div>
-      </header>
+      <Header breadcrumbs={[
+        { label: repoName || repoId || '', to: `/repos/${repoId}/prs` },
+        { label: 'Pull Requests' },
+      ]} />
 
       <div style={{ maxWidth: 1000, margin: '24px auto', padding: '0 24px' }}>
         {/* Search */}
@@ -143,15 +134,26 @@ export function PRListPage() {
               </button>
             ))}
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            style={{
-              padding: '8px 20px', background: '#107c10', color: 'white',
-              border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600,
-            }}
-          >
-            + New Pull Request
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => navigate(`/repos/${repoId}/compare`)}
+              style={{
+                padding: '8px 16px', background: 'white', color: '#0078d4',
+                border: '1px solid #0078d4', borderRadius: 6, cursor: 'pointer', fontWeight: 600,
+              }}
+            >
+              Compare Branches
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              style={{
+                padding: '8px 20px', background: '#107c10', color: 'white',
+                border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600,
+              }}
+            >
+              + New Pull Request
+            </button>
+          </div>
         </div>
 
         {/* PR List */}
@@ -184,6 +186,9 @@ export function PRListPage() {
                       {pr.status}
                     </span>
                     <span style={{ fontWeight: 600, fontSize: 15 }}>{pr.title}</span>
+                    {pr.labels?.length > 0 && pr.labels.map((l) => (
+                      <LabelBadge key={l.id} name={l.name} color={l.color} />
+                    ))}
                   </div>
                   <div style={{ fontSize: 13, color: '#5f6368' }}>
                     #{pr.id} · {pr.source_branch} → {pr.target_branch} · {pr.author}

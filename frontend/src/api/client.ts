@@ -1,8 +1,15 @@
+import { useSettingsStore } from '../stores/settings.store';
+
 const BASE = '/api';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const displayName = useSettingsStore.getState().displayName;
   const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-PRView-User': displayName || 'local-user',
+      ...options?.headers,
+    },
     ...options,
   });
   if (!res.ok) {
