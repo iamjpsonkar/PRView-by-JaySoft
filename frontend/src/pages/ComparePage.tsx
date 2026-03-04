@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSettingsStore } from '../stores/settings.store';
@@ -138,6 +138,31 @@ export function ComparePage() {
   const [fullDiff, setFullDiff] = useState<string | null>(null);
   const diffRef = useRef<HTMLDivElement>(null);
 
+  // Resizable sidebar
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const resizingRef = useRef(false);
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const onMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      setSidebarWidth(Math.max(160, Math.min(600, startW + ev.clientX - startX)));
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [sidebarWidth]);
+
   useEffect(() => {
     if (source && target && source !== target) {
       loadComparison();
@@ -252,11 +277,11 @@ export function ComparePage() {
         <div style={{ padding: 48, textAlign: 'center', color: '#5f6368' }}>Loading comparison...</div>
       ) : source && target && source !== target && files.length > 0 ? (
         <div style={{ maxWidth: '100%', margin: '8px auto', padding: '0 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `${sidebarWidth}px 8px minmax(0, 1fr)`, gap: 0 }}>
             {/* File tree */}
             <div style={{
               background: 'white', borderRadius: 8, border: '1px solid #dadce0',
-              maxHeight: 'calc(100vh - 280px)', overflow: 'auto', position: 'sticky', top: 16,
+              maxHeight: 'calc(100vh - 280px)', overflowY: 'auto', overflowX: 'auto', position: 'sticky', top: 16,
             }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid #dadce0', fontSize: 13, fontWeight: 600 }}>
                 Changed Files ({files.length})
@@ -293,7 +318,7 @@ export function ComparePage() {
                   }}>
                     {statusIcon[f.status] || 'M'}
                   </span>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left' }}>
+                  <span title={f.path} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {f.path}
                   </span>
                   <span style={{ fontSize: 11, flexShrink: 0 }}>
@@ -303,6 +328,20 @@ export function ComparePage() {
                   </span>
                 </div>
               ))}
+            </div>
+
+            {/* Resize handle */}
+            <div
+              onMouseDown={handleMouseDown}
+              style={{
+                cursor: 'col-resize', width: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                userSelect: 'none',
+              }}
+            >
+              <div style={{ width: 3, height: 40, borderRadius: 2, background: '#dadce0', transition: 'background 0.2s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#0078d4'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#dadce0'; }}
+              />
             </div>
 
             {/* Diff viewer */}
