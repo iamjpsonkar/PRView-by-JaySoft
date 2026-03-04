@@ -37,9 +37,12 @@ body {
    diff2html — Azure DevOps style overrides
    ═══════════════════════════════════════════ */
 
-/* Wrapper */
+/* Wrapper — constrain to container */
 .d2h-wrapper {
   border: none !important;
+  overflow: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 /* Per-file wrapper */
@@ -48,6 +51,7 @@ body {
   border-radius: 6px !important;
   margin-bottom: 12px !important;
   overflow: hidden !important;
+  max-width: 100% !important;
 }
 
 /* File header — sticky */
@@ -86,21 +90,23 @@ body {
 }
 
 /* ─── Side-by-side layout ─── */
-.d2h-file-side-diff {
-  width: 50% !important;
-  display: inline-block !important;
-  vertical-align: top !important;
-  overflow-x: auto !important;
-}
-
 .d2h-files-diff {
   display: flex !important;
   width: 100% !important;
+  overflow: hidden !important;
 }
 
-/* Code table takes full width */
+.d2h-file-side-diff {
+  width: 50% !important;
+  min-width: 0 !important;
+  max-width: 50% !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  flex-shrink: 0 !important;
+}
+
+/* Code table — fixed within pane, no expansion */
 .d2h-diff-table {
-  width: 100% !important;
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
   font-size: 12px !important;
   line-height: 20px !important;
@@ -127,8 +133,6 @@ body {
   padding: 0 4px 0 6px !important;
   white-space: pre !important;
   word-wrap: normal !important;
-  overflow-x: visible !important;
-  width: 100% !important;
 }
 
 .d2h-code-line-ctn {
@@ -256,8 +260,3 @@ body {
   background: #a1a1a1;
 }
 
-/* ─── Synchronized scroll containers ─── */
-.d2h-file-side-diff {
-  overflow-y: hidden !important;
-  overflow-x: auto !important;
-}

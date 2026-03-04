@@ -592,9 +592,9 @@ export function PRDetailPage() {
               {/* Diff content */}
               <div style={{
                 background: 'white', borderRadius: '0 0 8px 8px', border: '1px solid #dadce0',
-                overflow: 'auto',
+                overflow: 'hidden', maxHeight: 'calc(100vh - 240px)',
               }}>
-                <div ref={diffRef} />
+                <div ref={diffRef} style={{ overflow: 'auto', maxHeight: 'calc(100vh - 240px)' }} />
               </div>
 
               {/* File comments */}
