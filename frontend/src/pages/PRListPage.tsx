@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useRepoStore } from '../stores/repo.store';
+import { useThemeStore } from '../stores/theme.store';
 
 interface PR {
   id: number;
@@ -28,12 +29,14 @@ export function PRListPage() {
   const { repoId } = useParams<{ repoId: string }>();
   const navigate = useNavigate();
   const { repoName, setRepo } = useRepoStore();
+  const { dark, toggle: toggleTheme } = useThemeStore();
   const [prs, setPrs] = useState<PR[]>([]);
   const [filter, setFilter] = useState('active');
   const [showCreate, setShowCreate] = useState(false);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [newPR, setNewPR] = useState({ title: '', description: '', source_branch: '', target_branch: '', status: 'active' });
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (!repoId) return;
@@ -44,11 +47,22 @@ export function PRListPage() {
   const loadPRs = async () => {
     setLoading(true);
     try {
-      const data = await api.get<PR[]>(`/repos/${repoId}/prs?status=${filter}`);
+      const url = filter === 'all' ? `/repos/${repoId}/prs` : `/repos/${repoId}/prs?status=${filter}`;
+      const data = await api.get<PR[]>(url);
       setPrs(data);
     } catch { setPrs([]); }
     setLoading(false);
   };
+
+  const filteredPRs = prs.filter((pr) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return pr.title.toLowerCase().includes(q)
+      || pr.source_branch.toLowerCase().includes(q)
+      || pr.target_branch.toLowerCase().includes(q)
+      || pr.author.toLowerCase().includes(q)
+      || `#${pr.id}`.includes(q);
+  });
 
   const createPR = async () => {
     if (!newPR.title || !newPR.source_branch || !newPR.target_branch) return;
@@ -86,13 +100,34 @@ export function PRListPage() {
         <span style={{ fontWeight: 600 }}>{repoName || repoId}</span>
         <span style={{ opacity: 0.7 }}>/</span>
         <span>Pull Requests</span>
+        <div style={{ marginLeft: 'auto' }}>
+          <button onClick={toggleTheme} style={{
+            background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4,
+            color: 'white', cursor: 'pointer', padding: '4px 10px', fontSize: 14,
+          }} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
+            {dark ? '\u2600' : '\u263D'}
+          </button>
+        </div>
       </header>
 
       <div style={{ maxWidth: 1000, margin: '24px auto', padding: '0 24px' }}>
+        {/* Search */}
+        <div style={{ marginBottom: 12 }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search pull requests by title, branch, or author..."
+            style={{
+              width: '100%', padding: '10px 14px', border: '1px solid #dadce0',
+              borderRadius: 6, fontSize: 14, outline: 'none', background: 'white',
+            }}
+          />
+        </div>
+
         {/* Toolbar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ display: 'flex', gap: 4 }}>
-            {['active', 'draft', 'completed', 'abandoned'].map((s) => (
+            {['active', 'draft', 'completed', 'abandoned', 'all'].map((s) => (
               <button
                 key={s}
                 onClick={() => setFilter(s)}
@@ -123,12 +158,12 @@ export function PRListPage() {
         <div style={{ background: 'white', borderRadius: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
           {loading ? (
             <div style={{ padding: 48, textAlign: 'center', color: '#5f6368' }}>Loading...</div>
-          ) : prs.length === 0 ? (
+          ) : filteredPRs.length === 0 ? (
             <div style={{ padding: 48, textAlign: 'center', color: '#5f6368' }}>
-              No {filter} pull requests
+              {search ? `No results for "${search}"` : `No ${filter} pull requests`}
             </div>
           ) : (
-            prs.map((pr) => (
+            filteredPRs.map((pr) => (
               <div
                 key={pr.id}
                 onClick={() => navigate(`/repos/${repoId}/prs/${pr.id}`)}

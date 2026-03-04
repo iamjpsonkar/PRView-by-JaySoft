@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useRepoStore } from '../stores/repo.store';
+import { useThemeStore } from '../stores/theme.store';
 
 interface RepoInfo {
   id: string;
@@ -27,6 +28,7 @@ interface ValidateResponse {
 export function RepoSelectPage() {
   const navigate = useNavigate();
   const setRepo = useRepoStore((s) => s.setRepo);
+  const { dark, toggle: toggleTheme } = useThemeStore();
   const [path, setPath] = useState('');
   const [recentRepos, setRecentRepos] = useState<RepoInfo[]>([]);
   const [browseEntries, setBrowseEntries] = useState<DirEntry[]>([]);
@@ -92,6 +94,14 @@ export function RepoSelectPage() {
           <path d="M6 3v12l6-3 6 3V3" />
         </svg>
         <h1 style={{ fontSize: 20, fontWeight: 600 }}>PRView</h1>
+        <div style={{ marginLeft: 'auto' }}>
+          <button onClick={toggleTheme} style={{
+            background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 4,
+            color: 'white', cursor: 'pointer', padding: '4px 10px', fontSize: 14,
+          }} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
+            {dark ? '\u2600' : '\u263D'}
+          </button>
+        </div>
       </header>
 
       <div style={{ maxWidth: 720, margin: '48px auto', padding: '0 24px' }}>

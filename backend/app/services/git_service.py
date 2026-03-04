@@ -159,7 +159,59 @@ class GitService:
 
     @staticmethod
     def get_commit_diff(repo: Repo, sha: str) -> str:
-        return repo.git.diff(f"{sha}~1", sha, unified=3)
+        try:
+            return repo.git.diff(f"{sha}~1", sha, unified=3)
+        except Exception:
+            # Initial commit — diff against empty tree
+            return repo.git.diff("4b825dc642cb6eb9a060e54bf899d15363d7aa16", sha, unified=3)
+
+    @staticmethod
+    def get_commit_changed_files(repo: Repo, sha: str) -> list[dict]:
+        try:
+            numstat = repo.git.diff(f"{sha}~1", sha, numstat=True)
+            name_status = repo.git.diff(f"{sha}~1", sha, name_status=True)
+        except Exception:
+            empty_tree = "4b825dc642cb6eb9a060e54bf899d15363d7aa16"
+            numstat = repo.git.diff(empty_tree, sha, numstat=True)
+            name_status = repo.git.diff(empty_tree, sha, name_status=True)
+
+        status_map = {}
+        for line in name_status.strip().split('\n'):
+            if not line.strip():
+                continue
+            parts = line.split('\t')
+            if len(parts) >= 2:
+                status_code = parts[0][0]
+                file_name = parts[-1]
+                status_str = {
+                    'A': 'added', 'M': 'modified', 'D': 'deleted',
+                    'R': 'renamed', 'C': 'copied'
+                }.get(status_code, 'modified')
+                status_map[file_name] = status_str
+
+        files = []
+        for line in numstat.strip().split('\n'):
+            if not line.strip():
+                continue
+            parts = line.split('\t')
+            if len(parts) >= 3:
+                insertions = int(parts[0]) if parts[0] != '-' else 0
+                deletions = int(parts[1]) if parts[1] != '-' else 0
+                file_path = parts[2]
+                files.append({
+                    "path": file_path,
+                    "status": status_map.get(file_path, "modified"),
+                    "insertions": insertions,
+                    "deletions": deletions,
+                })
+        return files
+
+    @staticmethod
+    def get_commit_file_diff(repo: Repo, sha: str, file_path: str) -> str:
+        try:
+            return repo.git.diff(f"{sha}~1", sha, "--", file_path, unified=3)
+        except Exception:
+            return repo.git.diff("4b825dc642cb6eb9a060e54bf899d15363d7aa16", sha, "--", file_path, unified=3)
 
     @staticmethod
     def check_conflicts(repo: Repo, source: str, target: str) -> tuple[bool, list[str]]:
@@ -192,6 +244,136 @@ class GitService:
                         if 'CONFLICT' in line:
                             conflicting_files.append(line.strip())
                 return True, conflicting_files
+
+    @staticmethod
+    def get_conflict_details(repo: Repo, source: str, target: str) -> list[dict]:
+        """Attempt a merge in-memory and return per-file conflict info with content."""
+        original_branch = repo.active_branch.name if not repo.head.is_detached else None
+        conflicts = []
+
+        try:
+            repo.git.checkout(target)
+            try:
+                repo.git.merge("--no-commit", "--no-ff", source)
+                # No conflicts — clean up
+                repo.git.merge("--abort")
+                return []
+            except Exception:
+                pass
+
+            # We're now in a conflicted merge state — read the working tree
+            status_output = repo.git.status("--porcelain")
+            for line in status_output.split('\n'):
+                if not line.strip():
+                    continue
+                # UU = both modified (conflict), AA = both added, etc.
+                status_code = line[:2]
+                file_path = line[3:].strip()
+                if 'U' in status_code or status_code == 'AA' or status_code == 'DD':
+                    try:
+                        # Read the conflicted working-tree content
+                        full_path = os.path.join(repo.working_dir, file_path)
+                        with open(full_path, 'r', errors='replace') as f:
+                            content = f.read()
+
+                        # Get ours (target), theirs (source), and base versions
+                        try:
+                            ours = repo.git.show(f":{2}:{file_path}")  # stage 2 = ours
+                        except Exception:
+                            ours = ""
+                        try:
+                            theirs = repo.git.show(f":{3}:{file_path}")  # stage 3 = theirs
+                        except Exception:
+                            theirs = ""
+                        try:
+                            base = repo.git.show(f":{1}:{file_path}")  # stage 1 = base
+                        except Exception:
+                            base = ""
+
+                        conflicts.append({
+                            "path": file_path,
+                            "conflict_content": content,
+                            "ours": ours,
+                            "theirs": theirs,
+                            "base": base,
+                        })
+                    except Exception:
+                        conflicts.append({
+                            "path": file_path,
+                            "conflict_content": "",
+                            "ours": "",
+                            "theirs": "",
+                            "base": "",
+                        })
+
+            # Abort the merge
+            try:
+                repo.git.merge("--abort")
+            except Exception:
+                repo.git.reset("--hard")
+
+        except Exception:
+            try:
+                repo.git.merge("--abort")
+            except Exception:
+                try:
+                    repo.git.reset("--hard")
+                except Exception:
+                    pass
+        finally:
+            if original_branch:
+                try:
+                    repo.git.checkout(original_branch)
+                except Exception:
+                    pass
+
+        return conflicts
+
+    @staticmethod
+    def resolve_conflict(repo: Repo, source: str, target: str,
+                         resolutions: dict[str, str],
+                         commit_message: Optional[str] = None) -> tuple[bool, str, Optional[str]]:
+        """Apply manual conflict resolutions and complete the merge."""
+        original_branch = repo.active_branch.name if not repo.head.is_detached else None
+
+        try:
+            repo.git.checkout(target)
+
+            # Start the merge (will fail due to conflicts)
+            try:
+                repo.git.merge("--no-ff", source)
+                # No conflicts — already merged
+                return True, "Merge completed (no conflicts)", str(repo.head.commit.hexsha)
+            except Exception:
+                pass
+
+            # Apply each resolution
+            for file_path, resolved_content in resolutions.items():
+                full_path = os.path.join(repo.working_dir, file_path)
+                with open(full_path, 'w') as f:
+                    f.write(resolved_content)
+                repo.git.add(file_path)
+
+            # Commit the merge
+            msg = commit_message or f"Merge branch '{source}' into {target} (conflicts resolved)"
+            repo.git.commit("-m", msg)
+            merge_sha = str(repo.head.commit.hexsha)
+            return True, "Merge completed with conflict resolution", merge_sha
+
+        except Exception as e:
+            try:
+                repo.git.merge("--abort")
+            except Exception:
+                try:
+                    repo.git.reset("--hard")
+                except Exception:
+                    pass
+            if original_branch:
+                try:
+                    repo.git.checkout(original_branch)
+                except Exception:
+                    pass
+            return False, str(e), None
 
     @staticmethod
     def execute_merge(repo: Repo, source: str, target: str, strategy: str,

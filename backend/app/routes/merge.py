@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Repository, PullRequest
-from app.schemas import MergeCheckResponse, MergeRequest, MergeResponse
+from app.schemas import MergeCheckResponse, MergeRequest, MergeResponse, ConflictResolveRequest
 from app.services.git_service import GitService
 
 router = APIRouter(prefix="/api/repos/{repo_id}/prs/{pr_id}/merge", tags=["merge"])
@@ -51,6 +51,35 @@ def execute_merge(repo_id: str, pr_id: int, req: MergeRequest, db: Session = Dep
     if success:
         pr.status = "completed"
         pr.merge_strategy = req.strategy
+        pr.completed_at = datetime.now(timezone.utc)
+        pr.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+    return MergeResponse(success=success, message=message, merge_commit=merge_sha)
+
+
+@router.get("/conflicts")
+def get_conflicts(repo_id: str, pr_id: int, db: Session = Depends(get_db)):
+    pr, repo = get_pr_and_repo(repo_id, pr_id, db)
+    conflicts = GitService.get_conflict_details(repo, pr.source_branch, pr.target_branch)
+    return {"has_conflicts": len(conflicts) > 0, "files": conflicts}
+
+
+@router.post("/resolve", response_model=MergeResponse)
+def resolve_conflicts(repo_id: str, pr_id: int, req: ConflictResolveRequest, db: Session = Depends(get_db)):
+    pr, repo = get_pr_and_repo(repo_id, pr_id, db)
+
+    if pr.status != "active":
+        raise HTTPException(status_code=400, detail="Can only merge active pull requests")
+
+    success, message, merge_sha = GitService.resolve_conflict(
+        repo, pr.source_branch, pr.target_branch,
+        req.resolutions, req.commit_message,
+    )
+
+    if success:
+        pr.status = "completed"
+        pr.merge_strategy = "merge"
         pr.completed_at = datetime.now(timezone.utc)
         pr.updated_at = datetime.now(timezone.utc)
         db.commit()

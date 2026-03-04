@@ -55,6 +55,18 @@ def create_pr(repo_id: str, req: PRCreateRequest, db: Session = Depends(get_db))
     if req.source_branch == req.target_branch:
         raise HTTPException(status_code=400, detail="Source and target branches must be different")
 
+    existing = db.query(PullRequest).filter(
+        PullRequest.repo_id == repo_id,
+        PullRequest.source_branch == req.source_branch,
+        PullRequest.target_branch == req.target_branch,
+        PullRequest.status.in_(["active", "draft"]),
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"An active PR (#{existing.id}) already exists for {req.source_branch} → {req.target_branch}",
+        )
+
     pr = PullRequest(
         repo_id=repo_id,
         title=req.title,

@@ -33,3 +33,22 @@ def get_commit_diff(repo_id: str, pr_id: int, sha: str, db: Session = Depends(ge
         return {"diff_text": diff_text}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{sha}/files")
+def get_commit_files(repo_id: str, pr_id: int, sha: str, db: Session = Depends(get_db)):
+    pr, repo = get_pr_and_repo(repo_id, pr_id, db)
+    try:
+        return GitService.get_commit_changed_files(repo, sha)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{sha}/diff/file")
+def get_commit_file_diff(repo_id: str, pr_id: int, sha: str, path: str, db: Session = Depends(get_db)):
+    pr, repo = get_pr_and_repo(repo_id, pr_id, db)
+    try:
+        diff_text = GitService.get_commit_file_diff(repo, sha, path)
+        return {"path": path, "diff_text": diff_text}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

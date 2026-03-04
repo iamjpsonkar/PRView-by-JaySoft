@@ -176,6 +176,11 @@ class MergeRequest(BaseModel):
     delete_source_branch: bool = False
 
 
+class ConflictResolveRequest(BaseModel):
+    resolutions: dict[str, str]  # file_path -> resolved content
+    commit_message: Optional[str] = None
+
+
 class MergeResponse(BaseModel):
     success: bool
     message: str

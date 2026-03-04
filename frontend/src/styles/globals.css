@@ -5,26 +5,34 @@
 :root {
   --prv-bg: #ffffff;
   --prv-bg-secondary: #f4f5f7;
-  --prv-bg-tertiary: #e8eaed;
+  --prv-bg-tertiary: #f9f9f9;
+  --prv-border: #dadce0;
   --prv-text: #1a1a1a;
   --prv-text-secondary: #5f6368;
-  --prv-border: #dadce0;
   --prv-primary: #0078d4;
-  --prv-primary-hover: #106ebe;
   --prv-success: #107c10;
   --prv-danger: #d13438;
-  --prv-warning: #ca5010;
-  --prv-added-bg: #dff6dd;
-  --prv-added-text: #1a7f37;
-  --prv-deleted-bg: #fdd8db;
-  --prv-deleted-text: #cf222e;
+  --prv-card: #ffffff;
+  --prv-hover: #f9f9f9;
+  --prv-input-bg: #ffffff;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+[data-theme="dark"] {
+  --prv-bg: #1e1e1e;
+  --prv-bg-secondary: #252526;
+  --prv-bg-tertiary: #2d2d2d;
+  --prv-border: #3e3e42;
+  --prv-text: #d4d4d4;
+  --prv-text-secondary: #9d9d9d;
+  --prv-primary: #4fc3f7;
+  --prv-success: #4caf50;
+  --prv-danger: #f44336;
+  --prv-card: #2d2d2d;
+  --prv-hover: #383838;
+  --prv-input-bg: #3c3c3c;
 }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -34,11 +42,37 @@ body {
   overflow-x: hidden;
 }
 
-/* ═══════════════════════════════════════════
-   diff2html — Azure DevOps style overrides
-   ═══════════════════════════════════════════ */
+/* ─── Markdown ─── */
+.prv-markdown { line-height: 1.6; }
+.prv-markdown h1, .prv-markdown h2, .prv-markdown h3 { margin: 12px 0 6px; font-weight: 600; }
+.prv-markdown h1 { font-size: 18px; }
+.prv-markdown h2 { font-size: 16px; }
+.prv-markdown h3 { font-size: 14px; }
+.prv-markdown p { margin: 4px 0; }
+.prv-markdown ul, .prv-markdown ol { padding-left: 20px; margin: 4px 0; }
+.prv-markdown code {
+  background: var(--prv-bg-secondary); padding: 1px 4px; border-radius: 3px;
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace; font-size: 0.9em;
+}
+.prv-markdown pre {
+  background: var(--prv-bg-secondary); padding: 12px; border-radius: 6px;
+  overflow-x: auto; margin: 8px 0;
+}
+.prv-markdown pre code { background: none; padding: 0; }
+.prv-markdown blockquote {
+  border-left: 3px solid var(--prv-primary); padding-left: 12px;
+  color: var(--prv-text-secondary); margin: 8px 0;
+}
+.prv-markdown a { color: var(--prv-primary); }
+.prv-markdown table { border-collapse: collapse; margin: 8px 0; }
+.prv-markdown th, .prv-markdown td { border: 1px solid var(--prv-border); padding: 6px 12px; font-size: 13px; }
+.prv-markdown th { background: var(--prv-bg-secondary); font-weight: 600; }
+.prv-markdown img { max-width: 100%; border-radius: 4px; }
 
-/* Wrapper — constrain to container */
+/* ════════════════════════════════════
+   diff2html — full override for compact Azure DevOps style
+   ════════════════════════════════════ */
+
 .d2h-wrapper {
   border: none !important;
   overflow: hidden !important;
@@ -46,7 +80,6 @@ body {
   max-width: 100% !important;
 }
 
-/* Per-file wrapper */
 .d2h-file-wrapper {
   border: 1px solid var(--prv-border) !important;
   border-radius: 6px !important;
@@ -56,20 +89,20 @@ body {
   max-width: 100% !important;
 }
 
-/* The diff content area below the file header */
 .d2h-file-diff {
   overflow: hidden !important;
   width: 100% !important;
 }
 
-/* File header — sticky */
+/* File header */
 .d2h-file-header {
   background: var(--prv-bg-secondary) !important;
   border-bottom: 1px solid var(--prv-border) !important;
-  padding: 10px 14px !important;
+  padding: 8px 14px !important;
   position: sticky !important;
   top: 0 !important;
   z-index: 10 !important;
+  height: auto !important;
 }
 
 .d2h-file-name-wrapper {
@@ -82,19 +115,7 @@ body {
   font-weight: 600 !important;
   font-size: 13px !important;
   color: var(--prv-text) !important;
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
-}
-
-.d2h-file-stats {
-  font-size: 12px !important;
-}
-
-.d2h-file-stats .d2h-lines-added {
-  color: var(--prv-success) !important;
-}
-
-.d2h-file-stats .d2h-lines-deleted {
-  color: var(--prv-danger) !important;
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace !important;
 }
 
 /* ─── Side-by-side layout ─── */
@@ -113,32 +134,42 @@ body {
   flex-shrink: 0 !important;
 }
 
-/* Code table — compact rows */
-.d2h-diff-table {
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
-  font-size: 12px !important;
-  line-height: 18px !important;
-  border-collapse: collapse !important;
+.d2h-file-side-diff:first-child {
+  border-right: 2px solid var(--prv-border) !important;
 }
 
-/* Every cell in the diff — zero vertical padding */
+/* ─── THE TABLE ─── */
+.d2h-diff-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+  table-layout: auto !important;
+}
+
+/* ─── ALL CELLS — compact, no extra space ─── */
+.d2h-diff-table tr {
+  height: 18px !important;
+}
+
 .d2h-diff-table td {
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
+  padding: 0 !important;
   margin: 0 !important;
   height: 18px !important;
+  line-height: 18px !important;
   vertical-align: top !important;
 }
 
-/* Line numbers — scroll with content, NOT fixed */
-.d2h-code-linenumber,
-.d2h-code-side-linenumber {
+/* ─── LINE NUMBERS — static, compact ─── */
+td.d2h-code-linenumber,
+td.d2h-code-side-linenumber {
   position: static !important;
   display: table-cell !important;
-  width: 36px !important;
-  min-width: 36px !important;
-  max-width: 36px !important;
-  padding: 0 4px !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 0 5px !important;
   text-align: right !important;
   color: rgba(0,0,0,0.4) !important;
   border-right: 1px solid #e8eaed !important;
@@ -146,147 +177,167 @@ body {
   font-size: 11px !important;
   box-sizing: border-box !important;
   direction: ltr !important;
-  line-height: 18px !important;
-  height: 18px !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
 }
 
-/* Remove the zero-width space pseudo-element that adds extra height */
-.d2h-code-linenumber:after,
-.d2h-code-side-linenumber:after {
+td.d2h-code-linenumber::after,
+td.d2h-code-side-linenumber::after {
   content: none !important;
+  display: none !important;
 }
 
-/* Code line cells — compact, no extra spacing */
-.d2h-code-line,
-.d2h-code-side-line {
+/* Hide the float-based line number spans inside — we use the td directly */
+.line-num1, .line-num2 {
+  float: none !important;
+  display: inline !important;
+  width: auto !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+/* ─── CODE LINE — the actual code content cell ─── */
+td.d2h-code-line,
+td.d2h-code-side-line {
   display: table-cell !important;
-  padding: 0 4px 0 6px !important;
+  padding: 0 6px !important;
+  width: auto !important;
   white-space: pre !important;
   word-wrap: normal !important;
-  line-height: 18px !important;
-  height: 18px !important;
 }
 
-/* Code content span inside the cell */
 .d2h-code-line-ctn {
   display: inline !important;
   white-space: pre !important;
   word-wrap: normal !important;
+  padding: 0 !important;
+  width: auto !important;
   vertical-align: top !important;
-  line-height: 18px !important;
 }
 
-/* Prefix (+/-/space) */
 .d2h-code-line-prefix {
   display: inline !important;
   user-select: none !important;
-  line-height: 18px !important;
+  padding: 0 !important;
+  background: none !important;
 }
 
-/* ─── Diff colors — Azure DevOps palette ─── */
+/* ─── DIFF COLORS ─── */
 
-/* Added lines — full-row green tint */
-.d2h-ins,
-.d2h-ins .d2h-code-linenumber,
-.d2h-ins .d2h-code-line {
+/* Added */
+tr.d2h-ins td,
+.d2h-ins td.d2h-code-linenumber,
+.d2h-ins td.d2h-code-side-linenumber,
+.d2h-ins td.d2h-code-line,
+.d2h-ins td.d2h-code-side-line,
+.d2h-ins {
   background: #dff6dd !important;
 }
-
-.d2h-ins .d2h-code-linenumber {
+.d2h-ins td.d2h-code-linenumber,
+.d2h-ins td.d2h-code-side-linenumber {
   color: #1a7f37 !important;
   border-right-color: #b7ddb2 !important;
 }
-
-/* Word-level highlight within added lines */
-.d2h-ins .d2h-code-line-ctn ins,
 .d2h-code-line-ctn ins {
   background: #acf2bd !important;
   text-decoration: none !important;
   border-radius: 2px !important;
 }
 
-/* Deleted lines — full-row red tint */
-.d2h-del,
-.d2h-del .d2h-code-linenumber,
-.d2h-del .d2h-code-line {
+/* Deleted */
+tr.d2h-del td,
+.d2h-del td.d2h-code-linenumber,
+.d2h-del td.d2h-code-side-linenumber,
+.d2h-del td.d2h-code-line,
+.d2h-del td.d2h-code-side-line,
+.d2h-del {
   background: #fdd8db !important;
 }
-
-.d2h-del .d2h-code-linenumber {
+.d2h-del td.d2h-code-linenumber,
+.d2h-del td.d2h-code-side-linenumber {
   color: #cf222e !important;
   border-right-color: #f5c0c4 !important;
 }
-
-/* Word-level highlight within deleted lines */
-.d2h-del .d2h-code-line-ctn del,
 .d2h-code-line-ctn del {
   background: #fdb8c0 !important;
   text-decoration: none !important;
   border-radius: 2px !important;
 }
 
-/* Context (unchanged) lines */
-.d2h-cntx,
-.d2h-cntx .d2h-code-linenumber,
-.d2h-cntx .d2h-code-line {
+/* Context (unchanged) */
+tr.d2h-cntx td, .d2h-cntx {
   background: #ffffff !important;
 }
-
-.d2h-cntx .d2h-code-linenumber {
-  color: rgba(0,0,0,0.35) !important;
+.d2h-cntx td.d2h-code-linenumber,
+.d2h-cntx td.d2h-code-side-linenumber {
+  color: rgba(0,0,0,0.3) !important;
 }
 
-/* Info/hunk header (e.g. @@ -10,5 +10,8 @@) */
-.d2h-info,
-.d2h-info .d2h-code-linenumber,
-.d2h-info .d2h-code-line {
+/* Hunk header */
+tr.d2h-info td, .d2h-info {
   background: #f0f7ff !important;
   color: #0078d4 !important;
   font-style: normal !important;
 }
-
-.d2h-info .d2h-code-linenumber {
+.d2h-info td.d2h-code-linenumber,
+.d2h-info td.d2h-code-side-linenumber {
   border-right-color: #c8e1ff !important;
 }
 
-/* Empty placeholder in side-by-side */
+/* Empty placeholder */
 .d2h-emptyplaceholder,
-.d2h-code-side-emptyplaceholder {
+.d2h-code-side-emptyplaceholder,
+td.d2h-emptyplaceholder,
+td.d2h-code-side-emptyplaceholder {
   background: #f6f6f6 !important;
 }
 
-/* ─── Side-by-side divider ─── */
-.d2h-file-side-diff:first-child {
-  border-right: 2px solid var(--prv-border) !important;
-}
-
-/* ─── Diff column label headers (left/right pane labels) ─── */
-.d2h-file-diff .d2h-diff-tbody tr:first-child {
+/* ─── Comment button on hover ─── */
+.d2h-diff-table tr {
   position: relative;
 }
 
-/* ─── Collapse/expand toggle ─── */
-.d2h-file-collapse {
-  cursor: pointer !important;
+.prv-comment-btn {
+  display: none;
+  position: absolute;
+  left: 2px;
+  top: 0;
+  width: 16px;
+  height: 16px;
+  background: var(--prv-primary);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  z-index: 5;
 }
 
-.d2h-file-collapse-input {
-  display: none !important;
+.d2h-diff-table tr:hover .prv-comment-btn {
+  display: block;
 }
 
 /* ─── Scrollbar ─── */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: var(--prv-bg-secondary);
-}
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
-}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--prv-bg-secondary); }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
 
+/* ─── Dark mode diff overrides ─── */
+[data-theme="dark"] .d2h-file-header { background: #2d2d2d !important; border-bottom-color: #3e3e42 !important; }
+[data-theme="dark"] .d2h-file-name { color: #d4d4d4 !important; }
+[data-theme="dark"] .d2h-file-wrapper { border-color: #3e3e42 !important; }
+[data-theme="dark"] tr.d2h-ins td, [data-theme="dark"] .d2h-ins { background: #1e3a1e !important; }
+[data-theme="dark"] .d2h-ins td.d2h-code-linenumber, [data-theme="dark"] .d2h-ins td.d2h-code-side-linenumber { color: #6ccf6c !important; border-right-color: #2d5a2d !important; }
+[data-theme="dark"] .d2h-code-line-ctn ins { background: #2d5a2d !important; }
+[data-theme="dark"] tr.d2h-del td, [data-theme="dark"] .d2h-del { background: #3a1e1e !important; }
+[data-theme="dark"] .d2h-del td.d2h-code-linenumber, [data-theme="dark"] .d2h-del td.d2h-code-side-linenumber { color: #cf6c6c !important; border-right-color: #5a2d2d !important; }
+[data-theme="dark"] .d2h-code-line-ctn del { background: #5a2d2d !important; }
+[data-theme="dark"] tr.d2h-cntx td, [data-theme="dark"] .d2h-cntx { background: #1e1e1e !important; }
+[data-theme="dark"] .d2h-cntx td.d2h-code-linenumber, [data-theme="dark"] .d2h-cntx td.d2h-code-side-linenumber { color: rgba(255,255,255,0.25) !important; }
+[data-theme="dark"] tr.d2h-info td, [data-theme="dark"] .d2h-info { background: #1e2a3a !important; color: #4fc3f7 !important; }
+[data-theme="dark"] td.d2h-code-linenumber, [data-theme="dark"] td.d2h-code-side-linenumber { color: rgba(255,255,255,0.3) !important; border-right-color: #3e3e42 !important; }
+[data-theme="dark"] .d2h-emptyplaceholder, [data-theme="dark"] .d2h-code-side-emptyplaceholder, [data-theme="dark"] td.d2h-emptyplaceholder, [data-theme="dark"] td.d2h-code-side-emptyplaceholder { background: #252526 !important; }
+[data-theme="dark"] .d2h-file-side-diff:first-child { border-right-color: #3e3e42 !important; }

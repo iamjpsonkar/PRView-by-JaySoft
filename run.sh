@@ -8,6 +8,21 @@ VENV_DIR="$BACKEND_DIR/.venv"
 BACKEND_PORT=8121
 FRONTEND_PORT=5121
 
+# ── Free ports if in use ──
+free_port() {
+  local port=$1
+  local pid
+  pid=$(lsof -ti :"$port" 2>/dev/null || true)
+  if [ -n "$pid" ]; then
+    echo "Port $port is in use by PID $pid. Killing..."
+    kill -9 $pid 2>/dev/null || true
+    sleep 1
+  fi
+}
+
+free_port "$BACKEND_PORT"
+free_port "$FRONTEND_PORT"
+
 cleanup() {
   echo ""
   echo "Shutting down..."
