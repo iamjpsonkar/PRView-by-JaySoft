@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useSettingsStore } from '../stores/settings.store';
@@ -76,13 +76,13 @@ export function PRDetailPage() {
   const [deleteSource, setDeleteSource] = useState(false);
   const [mergeCheck, setMergeCheck] = useState<{ can_merge: boolean; has_conflicts: boolean; conflicting_files: string[] } | null>(null);
 
-  // Commit diff state
-  const [selectedCommit, setSelectedCommit] = useState<string | null>(null);
-  const [commitDiff, setCommitDiff] = useState<string | null>(null);
-  const [commitFiles, setCommitFiles] = useState<DiffFile[]>([]);
-  const [selectedCommitFile, setSelectedCommitFile] = useState<string | null>(null);
+  // Commit diff state (accordion — multiple expanded)
+  const [expandedCommits, setExpandedCommits] = useState<Set<string>>(new Set());
+  const [commitDiffs, setCommitDiffs] = useState<Record<string, string>>({});
+  const [commitFilesMap, setCommitFilesMap] = useState<Record<string, DiffFile[]>>({});
+  const [commitSelectedFiles, setCommitSelectedFiles] = useState<Record<string, string | null>>({});
   const [commitFileDiffs, setCommitFileDiffs] = useState<Record<string, string>>({});
-  const commitDiffRef = useRef<HTMLDivElement>(null);
+  const commitDiffRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const diffRef = useRef<HTMLDivElement>(null);
 
@@ -237,54 +237,66 @@ export function PRDetailPage() {
     if (activeTab === 'files' && !selectedFile) loadFullDiff();
   }, [activeTab]);
 
-  // ─── Commit diff ───
-  const loadCommitDiff = async (sha: string) => {
-    if (selectedCommit === sha) { setSelectedCommit(null); setCommitDiff(null); setCommitFiles([]); setSelectedCommitFile(null); return; }
-    setSelectedCommit(sha);
-    setSelectedCommitFile(null);
-    setCommitFileDiffs({});
-    try {
-      const [diffRes, filesRes] = await Promise.all([
-        api.get<{ diff_text: string }>(`/repos/${repoId}/prs/${prId}/commits/${sha}/diff`),
-        api.get<DiffFile[]>(`/repos/${repoId}/prs/${prId}/commits/${sha}/files`),
-      ]);
-      setCommitDiff(diffRes.diff_text);
-      setCommitFiles(filesRes);
-    } catch { setCommitDiff(null); setCommitFiles([]); }
+  // ─── Commit diff (accordion) ───
+  const toggleCommit = async (sha: string) => {
+    setExpandedCommits((prev) => {
+      const next = new Set(prev);
+      if (next.has(sha)) { next.delete(sha); } else { next.add(sha); }
+      return next;
+    });
+    // Fetch if not already cached
+    if (!commitDiffs[sha]) {
+      try {
+        const [diffRes, filesRes] = await Promise.all([
+          api.get<{ diff_text: string }>(`/repos/${repoId}/prs/${prId}/commits/${sha}/diff`),
+          api.get<DiffFile[]>(`/repos/${repoId}/prs/${prId}/commits/${sha}/files`),
+        ]);
+        setCommitDiffs((prev) => ({ ...prev, [sha]: diffRes.diff_text }));
+        setCommitFilesMap((prev) => ({ ...prev, [sha]: filesRes }));
+      } catch { }
+    }
   };
 
   const loadCommitFileDiff = async (sha: string, path: string) => {
-    if (commitFileDiffs[path]) { setSelectedCommitFile(path); return; }
+    const key = `${sha}:${path}`;
+    if (commitFileDiffs[key]) {
+      setCommitSelectedFiles((prev) => ({ ...prev, [sha]: path }));
+      return;
+    }
     try {
       const res = await api.get<{ path: string; diff_text: string }>(`/repos/${repoId}/prs/${prId}/commits/${sha}/diff/file?path=${encodeURIComponent(path)}`);
-      setCommitFileDiffs((prev) => ({ ...prev, [path]: res.diff_text }));
-      setSelectedCommitFile(path);
+      setCommitFileDiffs((prev) => ({ ...prev, [key]: res.diff_text }));
+      setCommitSelectedFiles((prev) => ({ ...prev, [sha]: path }));
     } catch { }
   };
 
-  // Render commit diff
+  // Render commit diffs for all expanded commits
   useEffect(() => {
-    if (!commitDiffRef.current || !selectedCommit) return;
-    const diffText = selectedCommitFile ? commitFileDiffs[selectedCommitFile] : commitDiff;
-    if (!diffText) {
-      commitDiffRef.current.innerHTML = '<div style="padding:48px;text-align:center;color:#5f6368">No changes to display</div>';
-      return;
-    }
-    commitDiffRef.current.innerHTML = '';
-    const ui = new Diff2HtmlUI(commitDiffRef.current, diffText, {
-      outputFormat: diffViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line',
-      drawFileList: false,
-      matching: 'lines',
-      highlight: true,
-      synchronisedScroll: true,
-      stickyFileHeaders: true,
-      renderNothingWhenEmpty: false,
+    expandedCommits.forEach((sha) => {
+      const el = commitDiffRefs.current[sha];
+      if (!el) return;
+      const selFile = commitSelectedFiles[sha] || null;
+      const diffText = selFile ? commitFileDiffs[`${sha}:${selFile}`] : commitDiffs[sha];
+      if (!diffText) {
+        el.innerHTML = '<div style="padding:32px;text-align:center;color:#5f6368;font-size:13px">Loading...</div>';
+        return;
+      }
+      el.innerHTML = '';
+      try {
+        const ui = new Diff2HtmlUI(el, diffText, {
+          outputFormat: diffViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line',
+          drawFileList: false,
+          matching: 'lines',
+          highlight: true,
+          renderNothingWhenEmpty: false,
+        });
+        ui.draw();
+        ui.highlightCode();
+      } catch {
+        el.innerHTML = `<pre style="padding:16px;font-size:12px;overflow:auto">${diffText.replace(/</g, '&lt;')}</pre>`;
+      }
     });
-    ui.draw();
-    ui.highlightCode();
-    if (diffViewMode === 'side-by-side') ui.synchronisedScroll();
-    ui.stickyFileHeaders();
-  }, [commitDiff, commitFileDiffs, selectedCommitFile, diffViewMode]);
+  }, [expandedCommits, commitDiffs, commitFileDiffs, commitSelectedFiles, diffViewMode]);
 
   // ─── Inline comment state ───
   const [inlineComment, setInlineComment] = useState<{ file: string; line: number; side: string } | null>(null);
@@ -634,7 +646,7 @@ export function PRDetailPage() {
       </div>
 
       {/* Tab Content */}
-      <div style={{ maxWidth: (activeTab === 'files' || activeTab === 'conflicts' || (activeTab === 'commits' && selectedCommit)) ? '100%' : 1200, margin: '16px auto', padding: '0 24px' }}>
+      <div style={{ maxWidth: (activeTab === 'files' || activeTab === 'conflicts' || activeTab === 'commits') ? '100%' : 1200, margin: '16px auto', padding: '0 24px' }}>
         {/* ═══ OVERVIEW TAB ═══ */}
         {activeTab === 'overview' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
@@ -1055,60 +1067,61 @@ export function PRDetailPage() {
 
             {/* Diff viewer */}
             <div style={{ minWidth: 0, overflow: 'hidden' }}>
-              {/* Diff toolbar */}
+              {/* Scrollable diff area with sticky toolbar */}
               <div style={{
-                background: 'white', borderRadius: '8px 8px 0 0', border: '1px solid #dadce0',
-                borderBottom: 'none', padding: '8px 16px',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                overflow: 'auto', maxHeight: 'calc(100vh - 220px)',
+                background: 'white', borderRadius: 8, border: '1px solid #dadce0',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>
-                    {selectedFile || 'All changes'}
-                  </span>
-                  {diffViewMode === 'side-by-side' && (
-                    <span style={{ fontSize: 11, color: '#5f6368' }}>
-                      <span style={{ background: '#fdd8db', padding: '1px 6px', borderRadius: 3 }}>
-                        {pr.target_branch}
-                      </span>
-                      {' ← left · right → '}
-                      <span style={{ background: '#dff6dd', padding: '1px 6px', borderRadius: 3 }}>
-                        {pr.source_branch}
-                      </span>
+                {/* Sticky diff toolbar */}
+                <div style={{
+                  position: 'sticky', top: 0, zIndex: 10,
+                  background: 'white', padding: '8px 16px',
+                  borderBottom: '1px solid #dadce0',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>
+                      {selectedFile || 'All changes'}
                     </span>
-                  )}
+                    {diffViewMode === 'side-by-side' && (
+                      <span style={{ fontSize: 11, color: '#5f6368' }}>
+                        <span style={{ background: '#fdd8db', padding: '1px 6px', borderRadius: 3 }}>
+                          {pr.target_branch}
+                        </span>
+                        {' ← left · right → '}
+                        <span style={{ background: '#dff6dd', padding: '1px 6px', borderRadius: 3 }}>
+                          {pr.source_branch}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      onClick={() => setDiffViewMode('inline')}
+                      style={{
+                        padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
+                        background: diffViewMode === 'inline' ? '#0078d4' : 'white',
+                        color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
+                      }}
+                    >
+                      Inline
+                    </button>
+                    <button
+                      onClick={() => setDiffViewMode('side-by-side')}
+                      style={{
+                        padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
+                        background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
+                        color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
+                      }}
+                    >
+                      Side by Side
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button
-                    onClick={() => setDiffViewMode('inline')}
-                    style={{
-                      padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-                      background: diffViewMode === 'inline' ? '#0078d4' : 'white',
-                      color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                    }}
-                  >
-                    Inline
-                  </button>
-                  <button
-                    onClick={() => setDiffViewMode('side-by-side')}
-                    style={{
-                      padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-                      background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
-                      color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                    }}
-                  >
-                    Side by Side
-                  </button>
-                </div>
-              </div>
 
-              {/* Diff content */}
-              <div style={{
-                background: 'white', borderRadius: '0 0 8px 8px', border: '1px solid #dadce0',
-                overflow: 'hidden', maxHeight: 'calc(100vh - 240px)',
-              }}>
-                <div ref={diffRef} style={{ overflow: 'auto', maxHeight: 'calc(100vh - 240px)' }} />
+                {/* Diff content */}
+                <div ref={diffRef} />
               </div>
-
               {/* Inline comment form (floating) */}
               {inlineComment && (
                 <div style={{
@@ -1201,150 +1214,138 @@ export function PRDetailPage() {
         {/* ═══ COMMITS TAB ═══ */}
         {activeTab === 'commits' && (
           <div>
-            {/* Commit list */}
-            <div style={{ background: 'white', borderRadius: 8, border: '1px solid #dadce0', marginBottom: selectedCommit ? 16 : 0 }}>
+            <div style={{ background: 'white', borderRadius: 8, border: '1px solid #dadce0' }}>
               <div style={{ padding: '12px 20px', borderBottom: '1px solid #dadce0', fontWeight: 600, fontSize: 14 }}>
                 Commits ({commits.length})
               </div>
               {commits.length === 0 ? (
                 <div style={{ padding: 48, textAlign: 'center', color: '#5f6368' }}>No commits</div>
-              ) : commits.map((c) => (
-                <div
-                  key={c.sha}
-                  onClick={() => loadCommitDiff(c.sha)}
-                  style={{
-                    padding: '12px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 16,
-                    cursor: 'pointer',
-                    background: selectedCommit === c.sha ? '#e8f4fd' : 'transparent',
-                  }}
-                  onMouseEnter={(e) => { if (selectedCommit !== c.sha) e.currentTarget.style.background = '#f9f9f9'; }}
-                  onMouseLeave={(e) => { if (selectedCommit !== c.sha) e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{c.message.split('\n')[0]}</div>
-                    <div style={{ fontSize: 12, color: '#5f6368' }}>
-                      {c.author_name} · {new Date(c.authored_date).toLocaleDateString()}
-                      {' · '}{c.files_changed} files
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <code
-                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.sha); }}
-                      title="Click to copy full SHA"
+              ) : commits.map((c) => {
+                const isExpanded = expandedCommits.has(c.sha);
+                const cFiles = commitFilesMap[c.sha] || [];
+                const cSelFile = commitSelectedFiles[c.sha] || null;
+                return (
+                  <div key={c.sha} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                    {/* Commit header row */}
+                    <div
+                      onClick={() => toggleCommit(c.sha)}
                       style={{
-                        fontSize: 12, fontFamily: 'monospace', background: selectedCommit === c.sha ? '#d0e8f7' : '#f4f5f7',
-                        padding: '4px 8px', borderRadius: 4, height: 'fit-content',
-                        color: '#0078d4', cursor: 'copy',
+                        padding: '12px 20px', display: 'flex', gap: 16,
+                        cursor: 'pointer',
+                        background: isExpanded ? '#e8f4fd' : 'transparent',
                       }}
+                      onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = '#f9f9f9'; }}
+                      onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = 'transparent'; }}
                     >
-                      {c.short_sha}
-                    </code>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={selectedCommit === c.sha ? '#0078d4' : '#9aa0a6'} strokeWidth="2"
-                      style={{ transform: selectedCommit === c.sha ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                      <path d="M3 5l4 4 4-4" />
-                    </svg>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Commit diff viewer — file tree + diff, like Files tab */}
-            {selectedCommit && (
-              <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 16 }}>
-                {/* File tree for this commit */}
-                <div style={{
-                  background: 'white', borderRadius: 8, border: '1px solid #dadce0',
-                  maxHeight: 'calc(100vh - 220px)', overflow: 'auto', position: 'sticky', top: 16,
-                }}>
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #dadce0', fontSize: 13, fontWeight: 600 }}>
-                    Changed Files ({commitFiles.length})
-                  </div>
-                  <div
-                    onClick={() => setSelectedCommitFile(null)}
-                    style={{
-                      padding: '8px 16px', cursor: 'pointer', fontSize: 13,
-                      background: !selectedCommitFile ? '#e8f4fd' : 'transparent',
-                      borderBottom: '1px solid #f0f0f0', fontWeight: 600,
-                    }}
-                  >
-                    All files
-                  </div>
-                  {commitFiles.map((f) => {
-                    const statusIcon: Record<string, string> = { added: 'A', modified: 'M', deleted: 'D', renamed: 'R' };
-                    const statusColors: Record<string, string> = { added: '#107c10', modified: '#ca5010', deleted: '#d13438', renamed: '#0078d4' };
-                    return (
-                      <div
-                        key={f.path}
-                        onClick={() => loadCommitFileDiff(selectedCommit!, f.path)}
-                        style={{
-                          padding: '8px 16px', cursor: 'pointer', fontSize: 13,
-                          background: selectedCommitFile === f.path ? '#e8f4fd' : 'transparent',
-                          borderBottom: '1px solid #f0f0f0',
-                          display: 'flex', alignItems: 'center', gap: 8,
-                        }}
-                        onMouseEnter={(e) => { if (selectedCommitFile !== f.path) e.currentTarget.style.background = '#f9f9f9'; }}
-                        onMouseLeave={(e) => { if (selectedCommitFile !== f.path) e.currentTarget.style.background = 'transparent'; }}
-                      >
-                        <span style={{
-                          width: 18, height: 18, borderRadius: 3, fontSize: 11,
-                          background: (statusColors[f.status] || '#5f6368') + '20',
-                          color: statusColors[f.status] || '#5f6368',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 700, flexShrink: 0,
-                        }}>
-                          {statusIcon[f.status] || 'M'}
-                        </span>
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left' }}>
-                          {f.path}
-                        </span>
-                        <span style={{ fontSize: 11, flexShrink: 0 }}>
-                          <span style={{ color: '#107c10' }}>+{f.insertions}</span>
-                          {' '}
-                          <span style={{ color: '#d13438' }}>-{f.deletions}</span>
-                        </span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{c.message.split('\n')[0]}</div>
+                        <div style={{ fontSize: 12, color: '#5f6368' }}>
+                          {c.author_name} · {new Date(c.authored_date).toLocaleDateString()}
+                          {' · '}{c.files_changed} files
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-
-                {/* Diff viewer */}
-                <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                  <div style={{
-                    background: 'white', borderRadius: '8px 8px 0 0', border: '1px solid #dadce0',
-                    borderBottom: 'none', padding: '8px 16px',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  }}>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>
-                      {selectedCommitFile || 'All changes'} — commit <code style={{ background: '#f4f5f7', padding: '2px 6px', borderRadius: 3, fontSize: 12 }}>{selectedCommit.slice(0, 8)}</code>
-                    </span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button
-                        onClick={() => setDiffViewMode('inline')}
-                        style={{
-                          padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-                          background: diffViewMode === 'inline' ? '#0078d4' : 'white',
-                          color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                        }}
-                      >Inline</button>
-                      <button
-                        onClick={() => setDiffViewMode('side-by-side')}
-                        style={{
-                          padding: '4px 12px', fontSize: 12, border: '1px solid #dadce0', borderRadius: 4,
-                          background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
-                          color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
-                        }}
-                      >Side by Side</button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <code
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.sha); }}
+                          title="Click to copy full SHA"
+                          style={{
+                            fontSize: 12, fontFamily: 'monospace', background: isExpanded ? '#d0e8f7' : '#f4f5f7',
+                            padding: '4px 8px', borderRadius: 4, height: 'fit-content',
+                            color: '#0078d4', cursor: 'copy',
+                          }}
+                        >
+                          {c.short_sha}
+                        </code>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={isExpanded ? '#0078d4' : '#9aa0a6'} strokeWidth="2"
+                          style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                          <path d="M3 5l4 4 4-4" />
+                        </svg>
+                      </div>
                     </div>
+
+                    {/* Expanded accordion content */}
+                    {isExpanded && (
+                      <div style={{ padding: '0 20px 16px', background: '#f8fafc' }}>
+                        {/* File chips bar */}
+                        {cFiles.length > 0 && (
+                          <div style={{
+                            display: 'flex', gap: 6, padding: '10px 0', overflowX: 'auto',
+                            borderBottom: '1px solid #e0e0e0', marginBottom: 10,
+                          }}>
+                            <button
+                              onClick={() => setCommitSelectedFiles((prev) => ({ ...prev, [c.sha]: null }))}
+                              style={{
+                                padding: '4px 10px', fontSize: 12, borderRadius: 12,
+                                border: '1px solid #dadce0', cursor: 'pointer', whiteSpace: 'nowrap',
+                                background: !cSelFile ? '#0078d4' : 'white',
+                                color: !cSelFile ? 'white' : '#1a1a1a',
+                              }}
+                            >All files</button>
+                            {cFiles.map((f) => {
+                              const statusColors: Record<string, string> = { added: '#107c10', modified: '#ca5010', deleted: '#d13438', renamed: '#0078d4' };
+                              return (
+                                <button
+                                  key={f.path}
+                                  onClick={() => loadCommitFileDiff(c.sha, f.path)}
+                                  style={{
+                                    padding: '4px 10px', fontSize: 12, borderRadius: 12,
+                                    border: '1px solid #dadce0', cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: cSelFile === f.path ? '#0078d4' : 'white',
+                                    color: cSelFile === f.path ? 'white' : '#1a1a1a',
+                                    display: 'flex', alignItems: 'center', gap: 4,
+                                  }}
+                                >
+                                  <span style={{ color: cSelFile === f.path ? 'white' : (statusColors[f.status] || '#5f6368'), fontWeight: 700, fontSize: 10 }}>
+                                    {f.status === 'added' ? 'A' : f.status === 'deleted' ? 'D' : f.status === 'renamed' ? 'R' : 'M'}
+                                  </span>
+                                  {f.path.split('/').pop()}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Diff toolbar */}
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '6px 0', marginBottom: 6,
+                        }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#444' }}>
+                            {cSelFile || 'All changes'} — <code style={{ background: '#f4f5f7', padding: '2px 6px', borderRadius: 3, fontSize: 12 }}>{c.short_sha}</code>
+                          </span>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button
+                              onClick={() => setDiffViewMode('inline')}
+                              style={{
+                                padding: '3px 10px', fontSize: 11, border: '1px solid #dadce0', borderRadius: 4,
+                                background: diffViewMode === 'inline' ? '#0078d4' : 'white',
+                                color: diffViewMode === 'inline' ? 'white' : '#1a1a1a', cursor: 'pointer',
+                              }}
+                            >Inline</button>
+                            <button
+                              onClick={() => setDiffViewMode('side-by-side')}
+                              style={{
+                                padding: '3px 10px', fontSize: 11, border: '1px solid #dadce0', borderRadius: 4,
+                                background: diffViewMode === 'side-by-side' ? '#0078d4' : 'white',
+                                color: diffViewMode === 'side-by-side' ? 'white' : '#1a1a1a', cursor: 'pointer',
+                              }}
+                            >Side by Side</button>
+                          </div>
+                        </div>
+
+                        {/* Diff content */}
+                        <div style={{
+                          background: 'white', borderRadius: 8, border: '1px solid #dadce0',
+                          overflow: 'auto', maxHeight: 500,
+                        }}>
+                          <div ref={(el) => { commitDiffRefs.current[c.sha] = el; }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{
-                    background: 'white', borderRadius: '0 0 8px 8px', border: '1px solid #dadce0',
-                    overflow: 'hidden', maxHeight: 'calc(100vh - 240px)',
-                  }}>
-                    <div ref={commitDiffRef} style={{ overflow: 'auto', maxHeight: 'calc(100vh - 240px)' }} />
-                  </div>
-                </div>
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
         )}
         {/* ═══ CONFLICTS TAB ═══ */}
