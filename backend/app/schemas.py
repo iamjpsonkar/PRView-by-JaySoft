@@ -1,0 +1,182 @@
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
+
+# --- Repository ---
+class RepoValidateRequest(BaseModel):
+    path: str
+
+
+class RepoValidateResponse(BaseModel):
+    valid: bool
+    name: Optional[str] = None
+    branch_count: Optional[int] = None
+    error: Optional[str] = None
+
+
+class RepoSelectResponse(BaseModel):
+    repo_id: str
+    name: str
+    path: str
+
+
+class RepoInfo(BaseModel):
+    id: str
+    name: str
+    path: str
+    last_opened: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DirEntry(BaseModel):
+    name: str
+    path: str
+    is_dir: bool
+    is_git_repo: bool = False
+
+
+# --- Branch ---
+class BranchInfo(BaseModel):
+    name: str
+    is_current: bool
+    commit_sha: str
+    commit_message: str
+
+
+# --- Pull Request ---
+class PRCreateRequest(BaseModel):
+    title: str
+    description: str = ""
+    source_branch: str
+    target_branch: str
+    status: str = "active"
+
+
+class PRUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+
+class PRResponse(BaseModel):
+    id: int
+    repo_id: str
+    title: str
+    description: str
+    source_branch: str
+    target_branch: str
+    status: str
+    merge_strategy: Optional[str] = None
+    author: str
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+    comment_count: int = 0
+    review_summary: Optional[dict] = None
+
+    class Config:
+        from_attributes = True
+
+
+# --- Diff ---
+class DiffFileInfo(BaseModel):
+    path: str
+    status: str  # added, modified, deleted, renamed
+    insertions: int
+    deletions: int
+    old_path: Optional[str] = None
+
+
+class DiffStats(BaseModel):
+    files_changed: int
+    insertions: int
+    deletions: int
+
+
+class DiffFileResponse(BaseModel):
+    path: str
+    diff_text: str
+    status: str
+
+
+# --- Commit ---
+class CommitInfo(BaseModel):
+    sha: str
+    short_sha: str
+    message: str
+    author_name: str
+    author_email: str
+    authored_date: str
+    files_changed: int = 0
+
+
+# --- Comment ---
+class CommentCreateRequest(BaseModel):
+    body: str
+    file_path: Optional[str] = None
+    line_number: Optional[int] = None
+    line_type: Optional[str] = None
+    parent_id: Optional[int] = None
+
+
+class CommentUpdateRequest(BaseModel):
+    body: str
+
+
+class CommentResponse(BaseModel):
+    id: int
+    pr_id: int
+    parent_id: Optional[int] = None
+    file_path: Optional[str] = None
+    line_number: Optional[int] = None
+    line_type: Optional[str] = None
+    body: str
+    author: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    replies: list["CommentResponse"] = []
+
+    class Config:
+        from_attributes = True
+
+
+# --- Review ---
+class ReviewCreateRequest(BaseModel):
+    vote: str  # approved, approved_with_suggestions, wait_for_author, rejected
+    body: str = ""
+
+
+class ReviewResponse(BaseModel):
+    id: int
+    pr_id: int
+    reviewer: str
+    vote: str
+    body: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# --- Merge ---
+class MergeCheckResponse(BaseModel):
+    can_merge: bool
+    has_conflicts: bool
+    conflicting_files: list[str] = []
+
+
+class MergeRequest(BaseModel):
+    strategy: str = "merge"  # merge, squash, rebase
+    commit_message: Optional[str] = None
+    delete_source_branch: bool = False
+
+
+class MergeResponse(BaseModel):
+    success: bool
+    message: str
+    merge_commit: Optional[str] = None

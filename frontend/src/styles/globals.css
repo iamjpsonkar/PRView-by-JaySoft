@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --prv-bg: #ffffff;
+  --prv-bg-secondary: #f4f5f7;
+  --prv-bg-tertiary: #e8eaed;
+  --prv-text: #1a1a1a;
+  --prv-text-secondary: #5f6368;
+  --prv-border: #dadce0;
+  --prv-primary: #0078d4;
+  --prv-primary-hover: #106ebe;
+  --prv-success: #107c10;
+  --prv-danger: #d13438;
+  --prv-warning: #ca5010;
+  --prv-added-bg: #dff6dd;
+  --prv-added-text: #1a7f37;
+  --prv-deleted-bg: #fdd8db;
+  --prv-deleted-text: #cf222e;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--prv-bg);
+  color: var(--prv-text);
+  line-height: 1.5;
+}
+
+/* diff2html overrides for Azure DevOps look */
+.d2h-file-header {
+  background: var(--prv-bg-secondary) !important;
+  border-bottom: 1px solid var(--prv-border) !important;
+  padding: 8px 12px !important;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.d2h-file-name {
+  font-weight: 600 !important;
+  color: var(--prv-text) !important;
+}
+
+.d2h-ins {
+  background: var(--prv-added-bg) !important;
+}
+
+.d2h-del {
+  background: var(--prv-deleted-bg) !important;
+}
+
+.d2h-code-line-ctn ins {
+  background: #acf2bd !important;
+  text-decoration: none !important;
+}
+
+.d2h-code-line-ctn del {
+  background: #fdb8c0 !important;
+  text-decoration: none !important;
+}
+
+.d2h-wrapper {
+  border: 1px solid var(--prv-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.d2h-file-wrapper {
+  border-bottom: 1px solid var(--prv-border);
+  margin-bottom: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+.d2h-file-wrapper:last-child {
+  border-bottom: none;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--prv-bg-secondary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--prv-border);
+  border-radius: 4px;
+}
