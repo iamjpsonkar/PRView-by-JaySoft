@@ -51,6 +51,8 @@ def migrate_db():
     from sqlalchemy import text
     from app.database import engine
     migrations = [
+        "ALTER TABLE comments ADD COLUMN suggestion TEXT",
+        "ALTER TABLE comments ADD COLUMN suggestion_applied INTEGER DEFAULT 0",
         "ALTER TABLE comments ADD COLUMN is_ai_generated INTEGER DEFAULT 0",
         "ALTER TABLE comments ADD COLUMN ai_agent_name TEXT",
         "ALTER TABLE reviews ADD COLUMN is_ai_generated INTEGER DEFAULT 0",
