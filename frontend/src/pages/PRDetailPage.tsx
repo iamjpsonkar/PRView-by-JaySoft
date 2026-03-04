@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { usePRStore } from '../stores/pr.store';
 import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui';
@@ -41,12 +41,18 @@ const voteDisplay: Record<string, { label: string; color: string }> = {
   rejected: { label: 'Rejected', color: '#d13438' },
 };
 
+const VALID_TABS = ['overview', 'files', 'commits'] as const;
+type Tab = typeof VALID_TABS[number];
+
 export function PRDetailPage() {
-  const { repoId, prId } = useParams<{ repoId: string; prId: string }>();
+  const { repoId, prId, tab: urlTab } = useParams<{ repoId: string; prId: string; tab?: string }>();
+  const navigate = useNavigate();
   const { diffViewMode, setDiffViewMode } = usePRStore();
 
+  const activeTab: Tab = VALID_TABS.includes(urlTab as Tab) ? (urlTab as Tab) : 'overview';
+  const setActiveTab = (tab: Tab) => navigate(`/repos/${repoId}/prs/${prId}/${tab}`, { replace: true });
+
   const [pr, setPr] = useState<PR | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'files' | 'commits'>('overview');
   const [files, setFiles] = useState<DiffFile[]>([]);
   const [stats, setStats] = useState<DiffStats | null>(null);
   const [commits, setCommits] = useState<Commit[]>([]);
@@ -324,7 +330,7 @@ export function PRDetailPage() {
       {/* Tabs */}
       <div style={{ background: 'white', borderBottom: '1px solid #dadce0' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', gap: 0 }}>
-          {(['overview', 'files', 'commits'] as const).map((tab) => (
+          {VALID_TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

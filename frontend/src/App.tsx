@@ -9,6 +9,7 @@ export default function App() {
       <Route path="/" element={<RepoSelectPage />} />
       <Route path="/repos/:repoId/prs" element={<PRListPage />} />
       <Route path="/repos/:repoId/prs/:prId" element={<PRDetailPage />} />
+      <Route path="/repos/:repoId/prs/:prId/:tab" element={<PRDetailPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

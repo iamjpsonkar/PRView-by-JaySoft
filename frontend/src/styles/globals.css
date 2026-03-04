@@ -121,8 +121,10 @@ body {
   border-collapse: collapse !important;
 }
 
-/* Line numbers column — compact */
-.d2h-code-linenumber {
+/* Line numbers — scroll with content, NOT fixed */
+.d2h-code-linenumber,
+.d2h-code-side-linenumber {
+  position: static !important;
   width: 36px !important;
   min-width: 36px !important;
   max-width: 36px !important;
@@ -134,6 +136,14 @@ body {
   font-size: 11px !important;
   vertical-align: top !important;
   box-sizing: border-box !important;
+  direction: ltr !important;
+}
+
+/* Code line — remove the left padding that was reserved for absolute line numbers */
+.d2h-code-side-line {
+  padding: 0 4px 0 6px !important;
+  white-space: pre !important;
+  display: inline-block !important;
 }
 
 /* Code content — tight padding, color spans full row */
