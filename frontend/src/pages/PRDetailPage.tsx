@@ -477,7 +477,7 @@ export function PRDetailPage() {
 
         {/* ═══ FILES TAB ═══ */}
         {activeTab === 'files' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: 16 }}>
             {/* File tree */}
             <div style={{
               background: 'white', borderRadius: 8, border: '1px solid #dadce0',
@@ -542,7 +542,7 @@ export function PRDetailPage() {
             </div>
 
             {/* Diff viewer */}
-            <div>
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
               {/* Diff toolbar */}
               <div style={{
                 background: 'white', borderRadius: '8px 8px 0 0', border: '1px solid #dadce0',

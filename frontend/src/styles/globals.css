@@ -31,6 +31,7 @@ body {
   background: var(--prv-bg);
   color: var(--prv-text);
   line-height: 1.5;
+  overflow-x: hidden;
 }
 
 /* ═══════════════════════════════════════════
@@ -51,7 +52,14 @@ body {
   border-radius: 6px !important;
   margin-bottom: 12px !important;
   overflow: hidden !important;
+  width: 100% !important;
   max-width: 100% !important;
+}
+
+/* The diff content area below the file header */
+.d2h-file-diff {
+  overflow: hidden !important;
+  width: 100% !important;
 }
 
 /* File header — sticky */
