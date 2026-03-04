@@ -33,27 +33,122 @@ body {
   line-height: 1.5;
 }
 
-/* diff2html overrides for Azure DevOps look */
+/* ═══════════════════════════════════════════
+   diff2html — Azure DevOps style overrides
+   ═══════════════════════════════════════════ */
+
+/* Wrapper */
+.d2h-wrapper {
+  border: none !important;
+}
+
+/* Per-file wrapper */
+.d2h-file-wrapper {
+  border: 1px solid var(--prv-border) !important;
+  border-radius: 6px !important;
+  margin-bottom: 12px !important;
+  overflow: hidden !important;
+}
+
+/* File header — sticky */
 .d2h-file-header {
   background: var(--prv-bg-secondary) !important;
   border-bottom: 1px solid var(--prv-border) !important;
-  padding: 8px 12px !important;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  padding: 10px 14px !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+}
+
+.d2h-file-name-wrapper {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
 }
 
 .d2h-file-name {
   font-weight: 600 !important;
+  font-size: 13px !important;
   color: var(--prv-text) !important;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
 }
 
+.d2h-file-stats {
+  font-size: 12px !important;
+}
+
+.d2h-file-stats .d2h-lines-added {
+  color: var(--prv-success) !important;
+}
+
+.d2h-file-stats .d2h-lines-deleted {
+  color: var(--prv-danger) !important;
+}
+
+/* ─── Side-by-side layout ─── */
+.d2h-file-side-diff {
+  width: 50% !important;
+  display: inline-block !important;
+  vertical-align: top !important;
+  overflow-x: auto !important;
+}
+
+.d2h-files-diff {
+  display: flex !important;
+  width: 100% !important;
+}
+
+/* Code table takes full width */
+.d2h-diff-table {
+  width: 100% !important;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
+  font-size: 12px !important;
+  line-height: 20px !important;
+  border-collapse: collapse !important;
+  table-layout: fixed !important;
+}
+
+/* Line numbers column */
+.d2h-code-linenumber {
+  width: 50px !important;
+  min-width: 50px !important;
+  max-width: 50px !important;
+  padding: 0 8px !important;
+  text-align: right !important;
+  color: #8a8886 !important;
+  background: #fafafa !important;
+  border-right: 1px solid #e8eaed !important;
+  user-select: none !important;
+  font-size: 12px !important;
+  vertical-align: top !important;
+  box-sizing: border-box !important;
+}
+
+/* Code content column */
+.d2h-code-line {
+  padding: 0 12px !important;
+  white-space: pre !important;
+  word-wrap: normal !important;
+  overflow-x: visible !important;
+}
+
+.d2h-code-line-ctn {
+  white-space: pre !important;
+  word-wrap: normal !important;
+}
+
+/* ─── Diff colors — Azure DevOps palette ─── */
+
+/* Added lines */
 .d2h-ins {
-  background: var(--prv-added-bg) !important;
+  background: #dff6dd !important;
+  border-color: #c3e6cb !important;
 }
 
-.d2h-del {
-  background: var(--prv-deleted-bg) !important;
+.d2h-ins .d2h-code-linenumber {
+  background: #c8e6c9 !important;
+  color: #1a7f37 !important;
+  border-right-color: #a5d6a7 !important;
 }
 
 .d2h-code-line-ctn ins {
@@ -61,29 +156,77 @@ body {
   text-decoration: none !important;
 }
 
+/* Deleted lines */
+.d2h-del {
+  background: #fdd8db !important;
+  border-color: #f5c6cb !important;
+}
+
+.d2h-del .d2h-code-linenumber {
+  background: #f8d7da !important;
+  color: #cf222e !important;
+  border-right-color: #f5c6cb !important;
+}
+
 .d2h-code-line-ctn del {
   background: #fdb8c0 !important;
   text-decoration: none !important;
 }
 
-.d2h-wrapper {
-  border: 1px solid var(--prv-border);
-  border-radius: 6px;
-  overflow: hidden;
+/* Context (unchanged) lines */
+.d2h-cntx {
+  background: #ffffff !important;
 }
 
-.d2h-file-wrapper {
-  border-bottom: 1px solid var(--prv-border);
-  margin-bottom: 0 !important;
-  border: none !important;
-  border-radius: 0 !important;
+.d2h-cntx .d2h-code-linenumber {
+  background: #fafafa !important;
 }
 
-.d2h-file-wrapper:last-child {
-  border-bottom: none;
+/* Info/hunk header (e.g. @@ -10,5 +10,8 @@) */
+.d2h-info {
+  background: #f0f7ff !important;
+  color: #0078d4 !important;
+  font-style: normal !important;
+  border-bottom: 1px solid #c8e1ff !important;
+  padding: 4px 12px !important;
 }
 
-/* Scrollbar */
+.d2h-info .d2h-code-linenumber {
+  background: #e1efff !important;
+  color: #0078d4 !important;
+  border-right-color: #c8e1ff !important;
+}
+
+/* Empty placeholder in side-by-side (when one side has no matching line) */
+.d2h-emptyplaceholder {
+  background: #f8f9fa !important;
+  border-right: 1px solid #e8eaed !important;
+}
+
+.d2h-code-side-emptyplaceholder {
+  background: #f8f9fa !important;
+}
+
+/* ─── Side-by-side divider ─── */
+.d2h-file-side-diff:first-child {
+  border-right: 2px solid var(--prv-border) !important;
+}
+
+/* ─── Diff column label headers (left/right pane labels) ─── */
+.d2h-file-diff .d2h-diff-tbody tr:first-child {
+  position: relative;
+}
+
+/* ─── Collapse/expand toggle ─── */
+.d2h-file-collapse {
+  cursor: pointer !important;
+}
+
+.d2h-file-collapse-input {
+  display: none !important;
+}
+
+/* ─── Scrollbar ─── */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -92,6 +235,15 @@ body {
   background: var(--prv-bg-secondary);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--prv-border);
+  background: #c1c1c1;
   border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* ─── Synchronized scroll containers ─── */
+.d2h-file-side-diff {
+  overflow-y: hidden !important;
+  overflow-x: auto !important;
 }

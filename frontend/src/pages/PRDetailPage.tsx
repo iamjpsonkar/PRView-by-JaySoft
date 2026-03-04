@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { usePRStore } from '../stores/pr.store';
-import * as Diff2Html from 'diff2html';
+import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui';
+import 'diff2html/bundles/css/diff2html.min.css';
 
 // ─── Types ───
 interface PR {
@@ -145,20 +146,34 @@ export function PRDetailPage() {
   }, [activeTab]);
 
   // ─── Render diff ───
-  const renderDiff = useCallback(() => {
+  useEffect(() => {
     if (!diffRef.current) return;
     const diffText = selectedFile ? fileDiffs[selectedFile] : fullDiff;
-    if (!diffText) { diffRef.current.innerHTML = '<div style="padding:48px;text-align:center;color:#5f6368">No changes to display</div>'; return; }
+    if (!diffText) {
+      diffRef.current.innerHTML = '<div style="padding:48px;text-align:center;color:#5f6368">No changes to display</div>';
+      return;
+    }
 
-    const html = Diff2Html.html(diffText, {
+    // Clear previous content
+    diffRef.current.innerHTML = '';
+
+    const ui = new Diff2HtmlUI(diffRef.current, diffText, {
       outputFormat: diffViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line',
       drawFileList: false,
       matching: 'lines',
+      highlight: true,
+      synchronisedScroll: true,
+      stickyFileHeaders: true,
+      fileContentToggle: true,
+      renderNothingWhenEmpty: false,
     });
-    diffRef.current.innerHTML = html;
+    ui.draw();
+    ui.highlightCode();
+    if (diffViewMode === 'side-by-side') {
+      ui.synchronisedScroll();
+    }
+    ui.stickyFileHeaders();
   }, [selectedFile, fileDiffs, fullDiff, diffViewMode]);
-
-  useEffect(() => { renderDiff(); }, [renderDiff]);
 
   // ─── Comment actions ───
   const submitComment = async () => {
@@ -334,7 +349,7 @@ export function PRDetailPage() {
       </div>
 
       {/* Tab Content */}
-      <div style={{ maxWidth: 1200, margin: '16px auto', padding: '0 24px' }}>
+      <div style={{ maxWidth: activeTab === 'files' ? '100%' : 1200, margin: '16px auto', padding: '0 24px' }}>
         {/* ═══ OVERVIEW TAB ═══ */}
         {activeTab === 'overview' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
@@ -534,9 +549,22 @@ export function PRDetailPage() {
                 borderBottom: 'none', padding: '8px 16px',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  {selectedFile || 'All changes'}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>
+                    {selectedFile || 'All changes'}
+                  </span>
+                  {diffViewMode === 'side-by-side' && (
+                    <span style={{ fontSize: 11, color: '#5f6368' }}>
+                      <span style={{ background: '#fdd8db', padding: '1px 6px', borderRadius: 3 }}>
+                        {pr.target_branch}
+                      </span>
+                      {' ← left · right → '}
+                      <span style={{ background: '#dff6dd', padding: '1px 6px', borderRadius: 3 }}>
+                        {pr.source_branch}
+                      </span>
+                    </span>
+                  )}
+                </div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button
                     onClick={() => setDiffViewMode('inline')}
